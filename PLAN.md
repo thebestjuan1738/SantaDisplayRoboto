@@ -1,344 +1,403 @@
-# Santa Display — Roboto Origin Loco-Manipulation Demo
+# Santabot — Holiday Gift Delivery
 
 **Course:** Human-Centered Robotics — Final Motion Display
-**Platform:** RoboParty *Roboto Origin* (RPO), simulation only
-**Deliverable:** A rendered video of the humanoid relocating two boxes between two tables ("moving presents under the tree")
-**Plan date:** 2026-11-05
+**Team:** Cody Andres Alessio-Bunnell · Sergio Sánchez Manso · Zhao-Yu "Yuki" Lu
+**Platform:** RoboParty *Roboto Origin* (RPO)
+**Milestones:** Review **2026-11-19** · Demonstration **2026-12-03**
+**Plan revision:** 2026-11-12 — reconciled against the team slide deck
+
+> This file is the engineering plan behind the deck. The deck is the source of truth for
+> scope, schedule, team split and success criteria; **this file is the source of truth for
+> architecture and implementation detail.** The deck summarizes; §5 specifies. §3 covers the
+> few places the deck has not yet caught up with the engineering analysis.
 
 ---
 
-## 1. The Show (what the video must contain)
+## 1. Committed Task Definition (from the deck)
 
-One continuous take. The robot executes the same cycle twice, once per box.
+Santabot carries two presents from one table to the adjacent table, one at a time, and places each at the mirrored position "under the tree."
 
-| # | Beat | Base motion | Arm motion | Nominal duration |
-|---|------|-------------|------------|------------------|
-| 1 | Establish | idle stance at start mark | arms at home | 3 s |
-| 2 | Approach A | walk forward to Table A standoff | arms rise to pre-clamp | 8 s |
-| 3 | Align | small lateral/yaw correction | pre-clamp pose held | 2 s |
-| 4 | Clamp | **stand still** | arms close on box, squeeze | 3 s |
-| 5 | Lift | stand still | arms raise box clear of table | 2 s |
-| 6 | Retreat | walk **backward** to clear the table | hold box | 4 s |
-| 7 | Turn | turn in place toward Table B | hold box | 4 s |
-| 8 | Transit | walk forward a set distance | hold box | 8 s |
-| 9 | Align B | lateral/yaw correction | hold box | 2 s |
-| 10 | Place | stand still | lower box, open arms, release | 4 s |
-| 11 | Retreat B | walk backward, turn back toward A | arms to home | 6 s |
+**Presents**
+- Large: **12″ × 12″ × 12″** cardboard cube (≈ 305 mm)
+- Small: **8″ × 8″ × 8″** cardboard cube (≈ 203 mm)
+- Both light (empty cardboard)
 
-Cycle ≈ 46 s. Two cycles + establishing/closing shots ≈ **100 s of motion**. Box 1 is the large box, box 2 the small one — do the hard one first, while the clamp is the fresh problem rather than the tired one.
+**Configuration**
+- Two tables, **adjacent** — they meet at an intersection
+- **Home position:** 1 ft (≈ 305 mm) from the table intersection, facing the tables, relaxed pose
+- Small present: **6″ from each corner** of the table
+- Large present: **6″ to the left of the small**
+- Presents go to the **mirrored position** on the second table
 
-### Non-negotiable acceptance criteria
+**Grip**
+- The robot **squeezes each present between its wrists**. There is no hand.
 
-- [ ] Both boxes end on Table B, upright, within **±8 cm** of their marks
-- [ ] Zero falls and zero self-collisions across the take
-- [ ] End-to-end success rate **≥ 8/10** runs on the final seed sweep
-- [ ] Video ≥ 1080p, ≥ 30 fps, with at least two camera angles
-- [ ] Any physics assist (see §4.3) is disclosed in the report and shown in a side-by-side
+**Success criteria**
+| Requirement | Value |
+|---|---|
+| Sequence | home → table → move both presents → return home → **stand 1 s** |
+| Repeatability | **2 successes out of 3 runs** |
+| Time limit | **4 minutes per run** |
+| Recorded per run | completion, drops, falls, duration |
 
 ---
 
-## 2. Hard Platform Constraints (read this before designing anything)
+## 2. Status (from the deck)
 
-These come from the RoboParty repos and spec pages and **must be confirmed against the actual model files in Week 0** — the published sources disagree with each other.
+| | Item |
+|---|---|
+| ✅ Ready | Robot model · two-table scene · single-present code |
+| ⬜ Needed | Two-present code · reach check · training computer · supervised robot tests |
+| ❌ Not yet | **No trained behavior. No hardware result.** |
 
-| Property | Value | Consequence for this project |
+The scene preview in the deck is static, and the tables still need moving to the adjacent layout.
+
+---
+
+## 3. Reading the Deck Against This Plan
+
+Two corrections the deck has not caught up with yet, plus one note on how to read its control-route slide.
+
+### 3.1 The deck's "Control Route" slide summarizes §5 — it is not a different design
+
+The deck says one learned policy, where "rewards and penalties shape gait, grip, placement and balance" and "policy outputs joint movements for each task phase." That is presentation-level phrasing for the architecture specified in §5: **RL for locomotion, IK + PD for the arms, an FSM for sequencing.** The deck's fallback line — "planned motions with feedback" — describes the arm layer that is already the primary design.
+
+Nothing to decide here. Keep the deck's wording for the audience; build §5.
+
+The one thing worth doing before the review is agreeing how all three of you answer if an instructor asks what "the policy" actually covers:
+
+> It learns to walk, turn, and stay balanced — including while carrying a present. It does not learn the squeeze or the placement; those are commanded from measured positions.
+
+That phrasing is accurate, matches the deck, and avoids claiming an end-to-end result you are not producing.
+
+### 3.2 The 12″ present is the top feasibility risk, and the deck under-rates it
+
+The deck lists "the 12″ present may be harder to grip with the wrists" as one risk among five. It is not one among five — it is **the** risk, and it is a *kinematic* question that can be answered this week, not a tuning question.
+
+Squeezing a 305 mm cube between the wrists requires both wrists simultaneously ≥ 305 mm apart, forward of the torso, and at box-centre height. With **5-DOF arms** on a 1.25 m robot (arm ≈ 550 mm), that is a large shoulder abduction at a long moment arm. It may simply be outside the usable workspace.
+
+**Do the reach check first, before any training.** It is a few hours of work and it determines whether the 12″ present is in scope at all. If it fails, you need to know on Nov 13, not Nov 28 — the deck's own fallback (start with the 8″) becomes the plan, and that is a fine outcome *if discovered early*.
+
+### 3.3 "No sensing abilities" is a hardware-only problem — and it is a big one
+
+The deck lists this risk without separating the two environments:
+
+- **In simulation**, ground-truth pose is free. Placement accuracy is a non-issue.
+- **On hardware**, there is no perception in the loop. Every position is open-loop dead reckoning from the home pose, and drift accumulates across an entire 4-minute sequence of walking, turning and returning. A few centimetres of yaw drift on the approach becomes a missed present.
+
+This is the reason to expect the sim→hardware gap to be *large* regardless of how good the policy is. Mitigations, cheapest first:
+
+1. **Physical registration** — a marked home position and table edges the robot can touch to re-zero
+2. **Generous tolerances** — oversize the target placement zone; "mirrored position" need not be millimetre-accurate
+3. **Re-zero between presents** — return to home and re-register before the second delivery rather than carrying drift through
+4. **IMU yaw integration** for heading hold during the turn
+5. **RealSense D435i** (optional on this platform) — only if it is already mounted and working; integrating perception in three weeks is not realistic
+
+Decide at the hardware interface audit (task 4) which of these you get.
+
+---
+
+## 4. Platform Constraints
+
+From the RoboParty repos and spec pages. **Verify against the actual model files** — the published sources disagree with each other, and you already have the robot model, so this is a quick confirmation.
+
+| Property | Value | Consequence |
 |---|---|---|
-| **DOF per arm** | **5** (no wrist roll on the base model) | **You cannot command a full 6-DOF end-effector pose.** See §4.1 |
-| **Hands** | **Dummy hands, 0 finger DOF** on the base model | **There is no grasp.** The "squeeze" is a bimanual friction clamp. See §4.3 |
-| DOF per leg | 6 | Standard; fine for omnidirectional walking |
-| Waist | 1 (Origin) or 2 (RP1) | A yaw waist helps reach; confirm which you have |
-| Total DOF | 23 (Origin) / 24 (RP1) | Affects obs/action vector sizes everywhere |
-| Height / mass | ~1.25 m / ~34 kg | Drives table height — see §3.2 |
-| Rated payload | ~5 kg | Keep boxes ≤ 2 kg for margin |
-| Max step height | 50 mm | Floor must be flat; no thresholds in the scene |
-| Training stack | Isaac Lab 2.1.1 / Isaac Sim 4.5.0, rsl_rl, **linux-64** | **You are on Windows.** See Risk R1 |
-| Sim2sim | MuJoCo, via `roboparty_train` | Use it as the honesty check on the policy |
-| License | GPL-3.0 at root; submodules vary | Check before publishing your fork |
+| **DOF per arm** | **5** | Cannot command a full 6-DOF wrist pose — see §5.2 |
+| **Hands** | **Dummy, 0 finger DOF** | Confirms the deck's wrist-squeeze approach is the only option |
+| DOF per leg | 6 | Fine for omnidirectional walking |
+| Waist | 1 (Origin) / 2 (RP1) | Waist yaw materially helps the reach check |
+| Total DOF | 23 (Origin) / 24 (RP1) | Sets obs/action vector sizes |
+| Height / mass | ~1.25 m / ~34 kg | Drives table height |
+| Rated payload | ~5 kg | Non-issue — cardboard boxes are well under |
+| Max step height | 50 mm | Flat floor only; watch for cable runs and thresholds on the lab floor |
+| Training stack | Isaac Lab 2.1.1 / Isaac Sim 4.5.0, rsl_rl, **linux-64** | The "training computer" the deck needs must be Linux |
+| Sim2sim | MuJoCo | Use it as the honesty check before hardware |
+| Sensing | 6-axis IMU; RealSense D435i optional | See §3.3 |
+| License | GPL-3.0 at root; submodules vary | Check before publishing the fork |
 
-### Repository map (upstream)
+### Upstream repository map
 
 ```
-github.com/Roboparty/roboto_origin   # aggregator, read the README first
-├── rpo_description      # URDF + MJCF + meshes               <- you need this
-├── roboparty_train      # Isaac Lab tasks, rsl_rl, sim2sim    <- you fork this
-├── roboparty_deploy     # ROS2 + ONNX inference + Python SDK (hardware; likely unused)
-├── rpo_hardware         # CAD/BOM (unused)
-└── roboparty_xr_teleop  # possible source of arm demo trajectories
+github.com/Roboparty/roboto_origin
+├── rpo_description      # URDF + MJCF + meshes          <- reach check uses this
+├── roboparty_train      # Isaac Lab tasks, rsl_rl, sim2sim
+├── roboparty_deploy     # ROS2 + ONNX inference + Python SDK  <- the hardware path
+├── rpo_hardware         # CAD/BOM
+└── roboparty_xr_teleop  # possible source of arm trajectories
 ```
+
+`roboparty_deploy` is no longer optional — it is the interface the hardware audit (task 4) must assess.
 
 ---
 
-## 3. Target Architecture
-
-Three layers. **Only the bottom-left box is learned.** Everything else is deterministic, which is exactly what a scripted, repeatable display needs.
+## 5. Architecture
 
 ```
                     ┌───────────────────────────────────────┐
                     │  SHOW DIRECTOR  (FSM, 20 Hz, Python)  │
-                    │  states + guards + nominal durations  │
+                    │  phases + guards + 4-min watchdog     │
                     └───┬───────────────────────────┬───────┘
-          base_vel_cmd  │                           │  bimanual target + clamp cmd
-         (vx, vy, wz)   │                           │  (midpoint, separation, yaw)
+          base_vel_cmd  │                           │  wrist-clamp target
+         (vx, vy, wz)   │                           │  (midpoint, yaw, separation)
                         v                           v
       ┌──────────────────────────┐      ┌──────────────────────────────┐
       │  LOCOMOTION POLICY (RL)  │      │  ARM CONTROLLER (IK + PD)    │
-      │  50 Hz, ONNX             │      │  200 Hz, numeric IK          │
+      │  50 Hz, ONNX             │      │  200 Hz, damped-LS IK        │
       │  12 leg (+waist) targets │      │  10 arm joint targets        │
       └────────────┬─────────────┘      └───────────────┬──────────────┘
                    └──────────────┬────────────────────-┘
                                   v
-                   ┌──────────────────────────────┐
-                   │  JOINT PD / ACTUATOR MODEL   │  1 kHz, in-sim
-                   └──────────────────────────────┘
+          Sim: Isaac Lab / MuJoCo   ·   Hardware: roboparty_deploy (ROS2 + ONNX)
 ```
 
-### 3.1 Why the arms are not RL
+**Only the locomotion layer is learned.** That split is deliberate:
 
-Your stated pipeline — time-based PID arm control — is the right call, and this plan commits to it. RL for the arms would buy generalization you do not need, since the box positions are fixed and known, at the cost of weeks of reward shaping and non-repeatable motion. IK plus joint PD is deterministic, trivially tunable, and frame-accurate for video.
+- **Legs → RL.** Balance and gait under a shifting payload are exactly what RL is good at, there is no practical closed-form alternative, and `roboparty_train` already ships a working recipe to fork.
+- **Arms → IK + PD, not RL.** The present positions are fixed and measured (§1), so there is nothing to generalize over. RL here would buy generalization you do not need, at the cost of weeks of reward shaping and motion that differs run to run. IK plus joint PD is deterministic, tunable, and reproducible — which is what a graded 2-of-3 demonstration actually rewards.
+- **Sequencing → FSM, not a learned phase selector.** Long-horizon phase transitions from sparse reward are the hardest thing to train and the hardest to debug under a 4-minute clock. An explicit state machine is inspectable: when a run fails you know *which phase* it failed in, which is exactly what task 3's diagnosis step needs to produce.
 
-**One amendment:** make the Show Director a **guarded** FSM rather than purely open-loop. Each state keeps a nominal duration *and* a completion predicate (`base within 5 cm of standoff mark`, `both forearm contacts active`, `box height > table + 3 cm`). Transition on `predicate OR timeout`. Pure wall-clock sequencing drifts the moment the locomotion policy takes one extra step, and you will spend the last week re-tuning magic numbers after every retrain. The guards cost about thirty lines and make the sequence robust to policy changes. Keep a `--force-timed` flag as the fallback if a guard proves flaky near the deadline.
+### 5.1 The FSM needs a watchdog, not just guards
 
-### 3.2 Scene geometry is a design problem, not a detail
+Each phase carries a nominal duration *and* a completion predicate (`base within tolerance of mark`, `both wrist contacts active`, `box clear of table`). Transition on `predicate OR timeout`.
 
-The robot is 1.25 m tall, so shoulder height is roughly 0.95–1.0 m and arm length ~0.55 m. The box must sit where the *forearms* can close around it with the elbows comfortably bent — not at the edge of the workspace.
+Add one thing the Nov 5 draft did not have: a **global 4-minute watchdog**. The deck imposes a hard time limit, so the FSM must track elapsed time and, if it is running long, either skip the optional polish or abort cleanly to a safe stance. A run that fails at 4:05 having otherwise succeeded still scores as a failure — budget phase durations against the clock from the start.
 
-**Week 0 task:** load the URDF, sweep the arm joints, and export the reachable bimanual workspace as a point cloud. Then pick table height and box size from the data. First guess to validate, not to trust: table surface **0.60–0.70 m**, large box **0.25 m** cube, small box **0.15 m** cube, standoff distance **0.45 m** from the table edge. Both tables identical (the brief specifies same size), separated by **2.0 m** with a 90° heading change between them.
+Nominal budget (≈ 150 s, leaving ~60% margin on the 4-minute limit):
 
----
+| Phase | Duration |
+|---|---|
+| Home → approach table A | 15 s |
+| Align + squeeze large present | 12 s |
+| Lift, turn to table B, place, release | 30 s |
+| Return for small present | 20 s |
+| Align + squeeze small present | 12 s |
+| Lift, turn, place, release | 30 s |
+| Return home + stand 1 s | 20 s |
 
-## 4. The Three Technical Problems
+### 5.2 5-DOF arms cannot track a 6-DOF pose
 
-### 4.1 Problem: 5-DOF arms cannot track a 6-DOF pose
-
-A 5-DOF serial arm spans a 5-dimensional subspace of SE(3). Asking for full position plus orientation gives you an unsolvable IK problem that your solver will silently approximate, producing drift and jitter on camera.
-
-**Solution — reparameterize the task bimanually.** Do not track two independent end-effector poses. Track a single 4-DOF *clamp frame*:
+A 5-DOF chain spans a 5-dimensional subspace of SE(3); a 6-DOF target gives an unsolvable IK problem your solver will silently approximate, producing drift. Reparameterize to a **4-DOF wrist-clamp frame**:
 
 | Parameter | Meaning |
 |---|---|
-| `p_mid ∈ R³` | midpoint between the two contact pads |
-| `yaw` | approach heading of the clamp, in torso frame |
-| `separation` | distance between the pads — this is the squeeze axis |
+| `p_mid ∈ R³` | midpoint between the two wrists |
+| `yaw` | approach heading in torso frame |
+| `separation` | wrist-to-wrist distance — the squeeze axis (**305 mm** for the large, **203 mm** for the small) |
 
-Five numbers across ten joints: comfortably over-determined, well-conditioned, and it maps directly onto what the motion actually is. Solve with damped least-squares IK (λ ≈ 0.05) on the 10-joint bimanual chain, with a nullspace term pulling toward a nominal elbow-out posture for a natural silhouette.
+Five numbers across ten joints: over-determined and well-conditioned. Solve with damped least-squares (λ ≈ 0.05) plus a nullspace term toward a nominal elbow-out posture.
 
-**Deliverable:** `control/arm_ik.py` exposing `solve(p_mid, yaw, separation) -> q_arms[10]`, plus a unit test asserting residual < 5 mm across the scripted trajectory.
+**Deliverable:** `control/arm_ik.py` → `solve(p_mid, yaw, separation) -> q_arms[10]`, with a unit test asserting < 5 mm residual across the scripted trajectory. **This same code is the reach check** — build it first and you get §3.2's answer for free.
 
-### 4.2 Problem: carrying a box breaks a vanilla locomotion policy
+---
 
-A 2 kg mass held 0.4 m in front of the torso shifts the CoM forward and adds inertia the policy has never seen. A policy trained on the bare robot will pitch forward and fall, or shuffle visibly. This is the most commonly underestimated failure in loco-manipulation demos.
+## 6. The Technical Problems
 
-**Solution — payload-aware domain randomization.** In the training env:
+### 6.1 Holding a box between two wrists
 
-- Attach a rigid body of randomized mass **0–3 kg** at a randomized offset **0.25–0.50 m** forward and **0.7–1.0 m** up from the base frame
-- **Randomize its appearance and disappearance mid-episode** — this is what pickup and place actually look like to the legs, and training through the transient is what makes beats 5 and 10 survive
-- Drive the arm joints with smooth random trajectories (filtered noise, realistic velocity limits) so the legs learn to reject arm-swing torque
-- Randomize base mass ±15%, friction 0.4–1.2, and add push perturbations
+With no fingers, this is friction force closure: `2·μ·N ≥ m·g`. Light cardboard helps enormously — a 12″ empty box is roughly 0.3–0.5 kg, so at μ = 0.8 you need only ~3 N of squeeze per side. **The statics are easy. The simulation is not**, and cardboard adds a wrinkle hardware-side.
 
-**Command space** — the show needs all of these, so train all of these:
+**Track A — Grasp latch (build first, this carries the demo).**
+When `both wrists in contact` AND `squeeze force > F_min` AND `held 10 consecutive frames`, create a fixed joint between the box and a virtual frame at the clamp midpoint, with a breakaway threshold. Release destroys it. Standard practice for a simulated display. **Disclose it in the report** — a documented assist is good engineering; an undisclosed one is not. Note it has no hardware analogue, which is part of why §3.3's gap is real.
 
-| Command | Range | Used in beat |
+**Track B — True friction clamp (stretch).**
+- Static friction ≥ 1.0, dynamic ≥ 0.9, restitution 0
+- Solver position iterations 16, velocity 4; substep to 1/480 s during contact phases only
+- Compliant pad primitives on the wrists rather than raw mesh collision
+- Tune contact/rest offset to avoid jitter-penetration oscillation
+
+**Hardware wrinkle:** real cardboard **deforms and crushes** under a wrist squeeze, and a crushed box changes dimensions mid-run. Sim will model it rigid. Mitigate by taping the boxes closed, keeping squeeze force just above the slip threshold, and — if needed — lightly stiffening the boxes internally. Confirm with the instructor that stiffened boxes are acceptable.
+
+### 6.2 Carrying a present while walking
+
+A mass held forward of the torso shifts the CoM and adds inertia the policy has not seen. **This is much less severe than the Nov 5 draft assumed** — cardboard boxes are light, so revise payload randomization down to **0–1.5 kg** (was 0–3 kg). Keep the mechanism, though: the *geometric* disturbance remains, because a 305 mm box held at arm's length moves the CoM meaningfully even at 0.4 kg.
+
+In the training env:
+- Randomized mass **0–1.5 kg** at **0.25–0.50 m** forward, **0.7–1.0 m** up from base frame
+- **Randomize appearance/disappearance mid-episode** — this is exactly what pickup and place look like to the legs
+- Smooth random arm trajectories so the legs learn to reject arm-swing torque
+- Base mass ±15%, friction 0.4–1.2, push perturbations
+
+**Command space** — the adjacent-table layout is turn-heavy, not transit-heavy:
+
+| Command | Range | Used in |
 |---|---|---|
-| `vx` forward | 0 → 0.6 m/s | 2, 8 |
-| `vx` backward | −0.4 → 0 m/s | 6, 11 |
-| `vy` lateral | ±0.3 m/s | 3, 9 |
-| `wz` yaw rate | ±0.8 rad/s | 7, 11 |
-| **zero command (stand still)** | all zero | **4, 5, 10** |
+| `vx` forward | 0 → 0.6 m/s | approach, return |
+| `vx` backward | −0.4 → 0 m/s | retreat from table |
+| `vy` lateral | ±0.3 m/s | fine alignment |
+| `wz` yaw rate | ±0.8 rad/s | **the table-to-table transition — heavily weighted** |
+| **zero (stand still)** | all zero | **squeeze, place, and the final 1 s stand** |
 
-**Call out the stand-still case explicitly.** Beats 4, 5 and 10 are stationary while the arms move and a mass appears or vanishes. Most locomotion reward sets treat zero-command as a trivial case, so it ends up undertrained and twitchy — which reads terribly on video. Add a dedicated stance term penalizing base XY drift and foot slip under zero command, and oversample zero-command episodes to roughly 25% of the batch.
-
-### 4.3 Problem: there are no hands
-
-With dummy end effectors, holding the box means **friction force closure between two opposing pads**. The statics are easy: you need `2·μ·N ≥ m·g`, so a 2 kg box at μ = 0.8 needs only about 12 N of squeeze per side. The *simulation* of it is the hard part — PhysX contact jitter, penetration recovery, and solver slop routinely let boxes squirt out of a clamp that is analytically sound.
-
-**Run two tracks in parallel. Do not bet the deadline on the hard one.**
-
-**Track A — Grasp latch (the reliable path, build this first).**
-When `both pads in contact` AND `squeeze force > F_min` AND `held for 10 consecutive frames`, create a fixed joint between the box and a virtual frame at the clamp midpoint, with a breakaway force threshold. Release destroys the joint. This is standard practice for display demos and it will carry your video. **Disclose it plainly in the report** — a documented assist is good engineering; an undisclosed one is not.
-
-**Track B — True friction clamp (the stretch goal).**
-- Physics material: static friction ≥ 1.0, dynamic ≥ 0.9, restitution 0
-- Solver: position iterations 16, velocity iterations 4; substep to 1/480 s during beats 4–10 only
-- Collision geometry: add compliant pad primitives to the forearms rather than using raw mesh collision
-- Contact offset and rest offset tuned to avoid the jitter-penetration oscillation
-
-If Track B lands by the end of Week 4, shoot the video with it and keep a Track A take as the safety. Either way, the side-by-side comparison is a genuinely interesting slide for the presentation.
+Two emphases specific to this task. **Turning matters more than walking** — the tables are adjacent, so the robot pivots far more than it transits; weight yaw commands accordingly. And **the final 1-second stand is a graded requirement**, not an afterthought: add a dedicated zero-command stance term penalizing base XY drift and foot slip, and oversample zero-command episodes to ~25% of the batch. Most reward sets treat zero-command as trivial and it ends up twitchy.
 
 ---
 
-## 5. Inheriting the Classmate's G1 Hybrid Policy
+## 7. Roadmap
 
-**Set expectations now: the checkpoint will not transfer.** The G1 has 7-DOF arms and a different leg kinematic chain; the Roboto Origin has 5-DOF arms and 23–24 total DOF. Observation and action dimensions differ, link masses differ, gear ratios differ. **Budget a full retrain from scratch.** What transfers is the *architecture, the env scaffolding, and the reward terms* — still easily a week of saved work.
+Anchored to the deck's Gantt. Dependencies carried over: task 2 needs 1; task 3 needs 2; task 5 needs the interface audit, a supervisor and lab access.
 
-**Integration contract — ask your classmate for exactly this list:**
+**Owners** (per the deck, pending team confirmation): **Yuki** — task definition and integration · **Cody** — control and robot interface · **Sergio** — trials and diagnosis.
 
-- [ ] The Isaac Lab task/env file and its config class
-- [ ] **Exact observation vector definition and ordering**, with units and frames
-- [ ] Observation normalization statistics, if any
-- [ ] Action scaling, decimation, control dt, and default joint position offsets
-- [ ] Every reward term with its weight
-- [ ] The EE-tracking head: how targets are parameterized and in which frame
-- [ ] Termination and curriculum conditions
-- [ ] The rsl_rl runner config (network sizes, PPO hyperparameters)
-- [ ] Whether the hybrid split is a single policy with a gated head, or two policies — **this is the key architectural question**
+### Now — through Nov 12 · closing out Stage 1
+- [x] Two-present task agreed *(task 1 — Yuki)*
+- Scene + return logic underway *(task 2 — Cody)*
+- **Add: resolve the training computer.** It must be Linux (§4). This gates everything in the next block and the deck already lists it as needed.
 
-Record the answers in `docs/inherited_policy.md`. Credit them in the report and the video credits.
+### Nov 13–19 · Scene, reach check, and the Nov 19 review
+> **The review lands at the end of this block. Go in with the reach check answered.**
 
----
+- **Reach check first** (§3.2) — build `control/arm_ik.py`, sweep the bimanual workspace, answer whether **305 mm wrist separation is achievable**. A few hours; it determines scope.
+- Move tables to the adjacent layout; place presents at the deck's measured positions (small 6″ from each corner, large 6″ to its left)
+- Extend single-present code to two presents, including the return leg *(task 2)*
+- Fork `roboparty_train`; create the `santabot_locomotion` task with the §6.2 command space
+- Start locomotion training — this is the long pole and needs wall-clock time
+- **Submit the hardware interface request** *(task 4 — Cody + Yuki)*. Lead time is the risk; file it early.
+- Agree the shared one-line description of the architecture for the review (§3.1)
 
-## 6. Roadmap
+**GATE A — by Nov 19:** Reach check answered for both present sizes. Two-present scene built. Locomotion training running. Hardware request submitted.
 
-Weeks are anchored to a **demo date of ~2026-12-12**. Shift the whole grid if your actual date differs. Each milestone has a hard gate — **do not start the next week's work until the gate passes**, because every one of these failures is cheaper to fix early than to debug through three layers later.
+### Nov 20–22 · Full sequence in simulation
+- Implement the grasp latch (§6.1 Track A)
+- Implement the FSM with guards and the 4-minute watchdog (§5.1)
+- **Test the full sequence and diagnose** *(task 3 — Sergio)* — run it end to end, record **where it first fails**, per the deck's first-experiment plan
+- Conduct the hardware interface audit *(task 4)*
 
-### Week 0 — Nov 5–9 · Foundations and de-risking
-> **This week is mostly about finding out what is false in this plan.**
+**GATE B — by Nov 22:** Full two-present sequence runs in simulation at least once, with a written failure log.
 
-- Resolve the **Windows/Linux blocker** (Risk R1) — WSL2 with Ubuntu 22.04 and CUDA, or a lab Linux box. Do this on day one.
-- Clone `roboto_origin` and all submodules; install Isaac Lab 2.1.1 and Isaac Sim 4.5.0
-- **Verify the actual DOF count, joint limits, link masses and torque limits** from `rpo_description` against §2 of this document. Correct this file where it is wrong.
-- Load the URDF in Isaac Sim and the MJCF in MuJoCo; confirm they agree (same joint order, same masses)
-- Run a stock `roboparty_train` locomotion task for 100 iterations — this proves the toolchain
-- Export the bimanual reachable workspace; finalize table height, box dimensions, standoff distances (§3.2)
-- Send the §5 integration contract to your classmate
+### Nov 23–29 · Integration and trials
+> ⚠️ **Thanksgiving is Thursday Nov 26** — this block is shorter than it looks.
 
-**GATE 0:** Robot stands stably in both Isaac Lab and MuJoCo. Scene dimensions are fixed and written into `configs/scene.yaml`. GPU training confirmed working.
+- Integrate the hardware interface *(task 4)*
+- **Book and begin supervised trials** *(task 5 — Cody + Sergio)*. Lab access and a supervisor are hard dependencies — if either slips, fall back to §9 T1 and say so early.
+- Harden simulation: 20-run seed sweep, categorize failures, fix the top two modes
+- Time every run against the 4-minute limit
+- Sim2sim to MuJoCo before any hardware run — do not skip this
 
-### Week 1 — Nov 10–16 · Locomotion baseline
-- Fork `roboparty_train`; create the `santa_locomotion` task
-- Implement the full command space from §4.2 (forward, **backward**, lateral, yaw, **zero**)
-- Baseline domain randomization: friction, base mass, pushes, observation noise
-- Train to convergence; iterate on reward weights
-- **Sim2sim to MuJoCo** — this is the honesty check, do not skip it
+**GATE C — by Nov 29:** 2-of-3 success demonstrated in simulation. Hardware either integrated and trialled, or formally descoped.
 
-**GATE 1:** Omnidirectional walking including backward and turn-in-place, stable for 60 s under random command sequences, surviving the MuJoCo transfer without visible degradation.
+### Nov 30–Dec 3 · Buffer, analysis, demonstration
+- Trial buffer *(task 5)* — this is the deck's own slack; protect it
+- Analysis and final handoff *(task 6 — all three)*: compare simulation against hardware, report every run outcome against the 2-of-3 bar with durations
+- Record the demonstration video
+- Prepare the Track A / Track B disclosure and the sim-vs-hardware gap discussion
 
-### Week 2 — Nov 17–23 · Payload robustness and arm control
-- Add payload randomization with mid-episode mass appear/disappear (§4.2)
-- Add randomized arm-motion disturbance
-- Add the dedicated zero-command stance reward; oversample stance episodes
-- Retrain; compare against the Week 1 baseline on a carry benchmark
-- **In parallel:** implement `control/arm_ik.py` (§4.1) with the bimanual 4-DOF parameterization and its unit test
-- Script the arm keyframe trajectories for approach / clamp / lift / lower / release
-
-**GATE 2:** Robot walks a 3 m loop carrying a 2 kg payload, no falls, 10/10 trials. Arm IK tracks the full scripted trajectory with < 5 mm residual and no joint limit violations.
-
-### Week 3 — Nov 24–30 · Clamp and single-box integration
-> ⚠️ **Thanksgiving is Thursday Nov 26 — this week has roughly three working days. Plan accordingly.**
-
-- Build the scene: two tables, two boxes, floor, tree placeholder
-- Implement **Track A grasp latch** (§4.3) — get this working before touching Track B
-- Implement the Show Director FSM with guarded transitions (§3.1)
-- Integrate: run beats 1–11 for **one box only**, end to end
-- Begin Track B friction tuning if time allows
-
-**GATE 3:** One box relocated from Table A to Table B, autonomously, **3/5 attempts**.
-
-### Week 4 — Dec 1–7 · Full sequence and robustness
-- Extend the FSM to the second box (return leg, re-approach, smaller box)
-- Note that **end-to-end success compounds** — two cycles at 90% each is 81% overall, so Gate 4 is meaningfully harder than twice Gate 3
-- Seed sweep: 20 runs, log every failure, categorize, fix the top two modes
-- Tune for *visual* quality, not just success: smooth arm velocity profiles, no twitching at stance, natural elbow posture
-- Track B decision point — ship it or fall back to Track A
-
-**GATE 4:** Full two-box sequence, **8/10 runs**, no falls. This is the engineering finish line; everything after is presentation.
-
-### Week 5 — Dec 8–12 · Production
-- Scene dressing: Christmas tree, wrapping-paper textures on the boxes, Santa hat on the robot, warm lighting
-- Camera work: at minimum a wide establishing shot, a tracking medium shot, and a close-up on the clamp
-- Render in **Isaac Sim** (RTX path tracing, Movie Capture) — not MuJoCo, whose rendering will not hold up on a projector
-- Edit; add titles and credits
-- Write the report: architecture, RL methodology, the 5-DOF and no-hands constraints and how you handled them, the disclosed physics assist, results table, failure analysis
-- Prepare the Track A / Track B side-by-side slide
-
-**GATE 5:** Final video exported. Report submitted. Repo has a README that reproduces the result.
+**GATE D — Dec 3:** Demonstration delivered. Every run logged with completion, drops, falls and duration.
 
 ---
 
-## 7. Risk Register
+## 8. Hardware Workstream
 
-| ID | Risk | Lik. | Impact | Mitigation | Resolve by |
-|----|------|------|--------|------------|-----------|
-| **R1** | **Dev machine is Windows; `roboparty_train` is linux-64** | High | **Blocking** | WSL2 + Ubuntu 22.04 + CUDA passthrough, or a lab Linux workstation. Verify GPU visibility inside WSL before anything else. | **Day 1** |
-| **R2** | No hands → friction clamp unreliable in PhysX | High | High | Track A grasp latch as the primary path (§4.3) | Week 3 |
-| **R3** | Payload destabilizes locomotion | High | High | Payload DR with mid-episode transients (§4.2) | Week 2 |
-| **R4** | G1 policy does not transfer | **Certain** | Medium | Already assumed — architecture reference only, budget a full retrain (§5) | Week 0 |
-| **R5** | Published RPO specs are wrong / model files differ | Medium | Medium | Verify everything against `rpo_description` in Week 0 and correct this document | Week 0 |
-| **R6** | Insufficient GPU hours for RL iteration | Medium | High | Reserve lab GPU time now. Budget ~2 h per run and ~15 runs. Checkpoint aggressively. | Week 0 |
-| **R7** | 5-DOF IK singular or unreachable at the box pose | Medium | High | Workspace sweep *before* fixing scene geometry (§3.2); DLS damping | Week 0 |
-| **R8** | Two-cycle success probability compounds | Medium | Medium | Scope ladder (§8) — one box is still a passing demo | Week 4 |
-| **R9** | Isaac Lab / Isaac Sim version mismatch breaks the fork | Medium | Medium | Pin exact versions in `environment.yml`; do not upgrade mid-project | Week 0 |
-| **R10** | Last-week render and edit crunch | Medium | Medium | Do a throwaway full render in Week 3 to surface pipeline problems early | Week 3 |
+New relative to the Nov 5 draft, which assumed simulation only. Tasks 4 and 5 in the deck make hardware a first-class track.
 
----
+**Interface audit checklist** *(task 4)*
+- [ ] Can `roboparty_deploy` run the exported ONNX policy on the onboard compute?
+- [ ] Joint ordering, sign conventions and offsets — **confirm they match the sim model exactly.** This is the classic silent sim-to-real failure.
+- [ ] Control rate achievable on hardware vs the 50 Hz the policy expects
+- [ ] E-stop procedure, and who holds it
+- [ ] Is the RealSense mounted and functional? (§3.3 option 5)
+- [ ] Battery runtime vs a 4-minute run plus setup — how many trials per charge?
+- [ ] Fall protection: gantry, harness, or spotters?
 
-## 8. Scope Ladder — guarantee a video
+**Trial protocol** *(task 5)*
+- Supervisor present, lab access booked, e-stop held by a named person
+- Start with the robot stationary and arms only, then walking without a present, then the full sequence
+- Log every run: completion, drops, falls, duration — as the deck specifies
+- Stop on repeated falls; diagnose in simulation, not on the robot
 
-Work down this list only if you must. **Tier 0 is the submission; everything above it is upside.** Decide at the Week 4 gate.
-
-| Tier | Scope | Status |
-|------|-------|--------|
-| **T0 — Must ship** | One box, Table A → Table B, grasp latch, basic scene, single camera | Non-negotiable |
-| **T1** | Both boxes, full two-cycle sequence | Target |
-| **T2** | True friction clamp (Track B), no latch | Stretch |
-| **T3** | Full Santa dressing, multi-camera, path-traced render | Polish |
-| **T4** | Onboard-camera POV shot, real-time telemetry overlay | If miraculous |
+**Descope trigger.** If lab access or supervision is not confirmed by **Nov 23**, declare hardware out of scope and deliver the simulation result. Say it at the review rather than discovering it on Dec 1.
 
 ---
 
-## 9. Proposed Repo Layout
+## 9. Scope Ladder
+
+The deck's fallback is "build the behavior one present at a time, starting with the 8″." This formalizes it. Decide at Gate C.
+
+| Tier | Scope |
+|---|---|
+| **T0 — must ship** | **8″ present only**, simulation, full sequence incl. return home + 1 s stand, 2 of 3 |
+| **T1** | Both presents in simulation, 2 of 3, under 4 minutes |
+| **T2** | T1 + supervised hardware trials, any outcome, honestly reported |
+| **T3** | Hardware achieves 2 of 3 |
+| **T4** | True friction clamp (no latch) + polished scene and video |
+
+T0 is a complete, honest deliverable. The deck's own fallback language already licenses it.
+
+---
+
+## 10. Risk Register
+
+| ID | Risk | Lik. | Impact | Mitigation | By |
+|----|------|------|--------|-----------|-----|
+| **R1** | **12″ present outside wrist-squeeze workspace** | Med-High | **Scope-defining** | Reach check first (§3.2); fall back to 8″-only (T0) | **Nov 19** |
+| **R2** | **No training computer / not Linux** | High | **Blocking** | Resolve now — deck already flags it; `roboparty_train` is linux-64 | **Nov 13** |
+| **R3** | **Lab access or supervision not granted** | Med-High | High | File request Nov 13; descope trigger Nov 23 (§8) | Nov 23 |
+| **R4** | **Locomotion policy doesn't converge in time** | Med | **High** | Fork `roboparty_train`'s working recipe rather than writing rewards from scratch; start training Nov 13, not later (§7) | **Nov 22** |
+| **R5** | Open-loop drift ruins hardware placement | High | High | Physical registration, generous tolerances, re-zero between presents (§3.3) | Nov 29 |
+| R6 | Wrist friction clamp unreliable in PhysX | High | Med | Grasp latch as primary (§6.1 Track A) | Nov 22 |
+| R7 | Cardboard crushes under squeeze on hardware | Med | Med | Tape closed, minimal squeeze force, confirm stiffening with instructor | Nov 29 |
+| R8 | Robot stops after the first delivery | Med | Med | Deck's own risk — FSM return-leg logic + explicit test (task 3) | Nov 22 |
+| R9 | Run exceeds 4 minutes | Low-Med | High | Phase budget + global watchdog (§5.1); time every run | Nov 29 |
+| R10 | Sim joint order ≠ hardware joint order | Med | **High** | Explicit check in the interface audit (§8) | Nov 29 |
+| R11 | Payload destabilizes locomotion | Low-Med | Med | Payload DR 0–1.5 kg with mid-episode transients (§6.2). Downgraded — boxes are light | Nov 22 |
+| R12 | Thanksgiving compresses the Nov 23–29 block | Certain | Low-Med | Front-load into Nov 20–22; protect the Nov 30 buffer | Nov 23 |
+
+---
+
+## 11. Repo Layout
 
 ```
 SantaDisplayRoboto/
 ├── PLAN.md                     # this file
 ├── README.md                   # reproduction instructions
 ├── environment.yml             # pinned: IsaacLab 2.1.1, IsaacSim 4.5.0, py3.10
-├── external/
-│   └── roboto_origin/          # submodule / vendored upstream
+├── external/roboto_origin/     # upstream submodule
 ├── assets/
-│   ├── robot/                  # URDF, MJCF, USD conversions
-│   └── scene/                  # tables, boxes, tree, textures
-├── envs/
-│   └── santa_locomotion/       # IsaacLab task: cfg, rewards, randomization
+│   ├── robot/                  # URDF, MJCF, USD
+│   └── scene/                  # adjacent tables, 12"/8" presents, tree
+├── envs/santabot_locomotion/   # IsaacLab task: cfg, rewards, randomization
 ├── control/
-│   ├── fsm.py                  # Show Director, guarded transitions
-│   ├── arm_ik.py               # bimanual DLS IK (p_mid, yaw, separation)
-│   ├── locomotion_runtime.py   # ONNX policy wrapper
-│   └── grasp_latch.py          # Track A attach/release
+│   ├── fsm.py                  # phases, guards, 4-min watchdog
+│   ├── arm_ik.py               # bimanual DLS IK — also the reach check
+│   ├── locomotion_runtime.py   # ONNX wrapper (shared sim + hardware)
+│   └── grasp_latch.py          # Track A attach/release (sim only)
 ├── configs/
-│   ├── scene.yaml              # table heights, box dims, marks, standoffs
-│   ├── show.yaml               # FSM durations, guard tolerances
+│   ├── scene.yaml              # table layout, present positions, home mark
+│   ├── show.yaml               # phase budget, guard tolerances
 │   └── gains.yaml              # arm PD gains
+├── hardware/
+│   ├── interface_audit.md      # §8 checklist, filled in
+│   └── trial_log.md            # per-run: completion, drops, falls, duration
 ├── policies/                   # checkpoints + exported ONNX
-├── scripts/
-│   ├── train.py  play.py  sim2sim.py  record.py  workspace_sweep.py
-├── docs/
-│   ├── inherited_policy.md     # §5 integration contract answers
-│   └── results.md              # seed sweep logs, failure taxonomy
+├── scripts/                    # train.py play.py sim2sim.py record.py reach_check.py
+├── docs/results.md             # seed sweeps, failure taxonomy
 └── media/                      # renders, final cut
 ```
 
 ---
 
-## 10. Open Questions
+## 12. To Confirm
 
-Non-blocking — the plan proceeds on the stated assumption, but confirm these in Week 0.
+The deck's own open list, plus what this analysis adds.
 
-| Question | Assumed |
-|---|---|
-| Actual demo/submission date? | **2026-12-12** — shift the week grid if different |
-| Simulation only, or hardware deployment too? | **Simulation only** (per the brief) |
-| Which variant — Origin 23-DOF or RP1 24-DOF? | Origin; verify from `rpo_description` |
-| GPU access — personal, lab, or cluster? | Unresolved — **this gates Week 1** |
-| Is the classmate's repo shareable, and under what terms? | Assumed yes, with attribution |
-| Team size and split? | Suggested: one on RL/locomotion, one on arms/FSM/scene, shared on video |
+| Question | Owner | By |
+|---|---|---|
+| **Present weights** (deck) | Sergio | Nov 13 — needed for payload DR |
+| **Feasible wrist grip** (deck) | Cody | **Nov 19 — this is the reach check, §3.2** |
+| **Training access** (deck) | Cody | **Nov 13 — blocking, must be Linux** |
+| **Lab time** (deck) | Cody + Yuki | Nov 23 — descope trigger |
+| Agree a shared description of the architecture for the review (§3.1) | All three | Nov 19 |
+| Confirm Gantt owner assignments | All three | Nov 13 |
+| Table height — derive from the reach check, not guessed | Cody | Nov 19 |
+| Is stiffening the cardboard boxes allowed? | Sergio | Nov 23 |
+| Is the grasp latch acceptable if disclosed? | All three | Nov 22 |
 
 ---
 
 ## Sources
 
-Platform facts in §2 were gathered from:
-- [github.com/Roboparty/roboto_origin](https://github.com/Roboparty/roboto_origin) — module list, Isaac Lab/Isaac Sim/ROS2 version badges, GPL-3.0
-- [humanoid.guide/product/roboto-origin](https://humanoid.guide/product/roboto-origin/) — 23 DOF, 0 hands, 125 cm, 34 kg, 5 kg payload (page carries a "Not Verified" badge)
-- [cnx-software.com — RoboParty RP1 (ROBOTO 01)](https://www.cnx-software.com/?p=178402) — per-limb DOF breakdown, 50 mm step height, dummy hands on the base model, submodule descriptions
+- Team slide deck, *Santabot: Holiday Gift Delivery*, version dated 2026-11-12 — task definition, configuration, success criteria, Gantt, risks, fallback
+- [github.com/Roboparty/roboto_origin](https://github.com/Roboparty/roboto_origin) — module list, Isaac Lab / Isaac Sim / ROS2 version badges, GPL-3.0
+- [humanoid.guide/product/roboto-origin](https://humanoid.guide/product/roboto-origin/) — 23 DOF, 0 hands, 125 cm, 34 kg (page carries a "Not Verified" badge)
+- [cnx-software.com — RoboParty RP1 (ROBOTO 01)](https://www.cnx-software.com/?p=178402) — per-limb DOF breakdown, 50 mm step height, dummy hands, submodule descriptions
 
-These sources disagree on generation and specifics. **Gate 0 exists to replace them with ground truth from `rpo_description`.**
+The two secondary sources disagree on generation and specifics. You already have the robot model — confirm §4 against it directly.
