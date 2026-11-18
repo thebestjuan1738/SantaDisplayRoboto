@@ -254,10 +254,40 @@ def build():
     r.fill.solid()
     r.fill.fore_color.rgb = ORANGE
     r.line.fill.background()
-    text(s, 0.83, 5.45, 11.46, 0.34, "Team SantaBot  /  Thursday, November 19, 2026  /  locomotion policy not yet trained",
+    text(s, 0.83, 5.45, 11.46, 0.34, "Cody, Sergio and Yuki  /  Thursday, November 19, 2026  /  locomotion policy not yet trained",
          size=17.25, color=SOFT)  # fmt: skip
     notes(s, "Four-minute slot. Lead with the status: the controller, scene and policy hand-off are built and "
              "evaluated; the walking policy itself has not been trained, so every rollout shown is ASSISTED.")  # fmt: skip
+
+    # 1b -- the brief (grammar-corrected) -----------------------------------------
+    page += 1
+    s = new_slide(prs)
+    title(s, "The brief")
+    blocks = [
+        ("The task", "We are building a locomanipulation display with the Roboto Origin humanoid, dubbed "
+                     "SantaBot. It starts from a home position, walks up to a table holding two presents, "
+                     "grabs one and moves it to the mirrored position on the adjacent table. It then returns "
+                     "for the second present, repeats the task, returns home and deactivates."),
+        ("The scene", "Two 60 × 24 in tables stand at the Origin's waist height. The gifts are empty 8 in and "
+                      "12 in cubes. The small gift starts 6 in from the closest side of the table, with the "
+                      "large gift 6 in to its left. Home is 1 ft from the edges where the tables touch. For "
+                      "festivity, a tree stands between the mirrored positions of the presents."),
+        ("Motion and grasp", "Movement should look natural: the robot grabs a gift, reverses and turns as "
+                             "needed, with no side-stepping. The Origin has no end effectors, so each present "
+                             "is squeezed between the wrists, which are placed slightly inside the gift's "
+                             "faces to apply adequate pressure."),
+        ("Policy and controller", "We are adapting the TA's G1 reinforcement-learning pipeline. Training access "
+                                  "may be limited, so the exported ONNX policy must integrate easily. A "
+                                  "high-level controller interfaces with that ONNX file, and the trial runs in "
+                                  "MuJoCo so the controller can be tuned."),
+    ]  # fmt: skip
+    for k, (lab, body) in enumerate(blocks):
+        x = 0.67 + (k % 2) * 6.2
+        y = 1.6 + (k // 2) * 2.45
+        text(s, x, y, 5.8, 0.36, lab, size=18.75, color=BLUE, bold=True)
+        text(s, x, y + 0.45, 5.8, 1.9, body, size=14.5)
+    footer(s, "The official prompt, edited for grammar only. Interpretations are on the scene slide.", page)
+    notes(s, "Wording corrected for grammar and clarity; no requirement was added or removed.")
 
     # 2 -- status ------------------------------------------------------------
     page += 1
@@ -468,12 +498,12 @@ def build():
     title(s, "Deployment readiness and revised plan")
     rows = [
         ["Task", "Owner", "Nov 13–19", "Nov 20–22", "Nov 23–29", "Nov 30–Dec 3"],
-        ["Controller, scene, evaluation", "Team", ("Done", {"bold": True}), "", "", ""],
+        ["Controller, scene, evaluation", "Cody", ("Done", {"bold": True}), "", "", ""],
         ["Train FlatWalk policy (GPU)", "TA", "Request", "Train", "", ""],
-        ["Unassisted sim + tuning", "Team", "", "Start", "Work", ""],
+        ["Unassisted sim + tuning", "Cody, Sergio", "", "Start", "Work", ""],
         ["Loaded-walk check / retrain", "Yuki", "", "", "Work", ""],
-        ["Pelvis pose estimate on Origin", "Team", "", "Check", "Work", ""],
-        ["Supervised hardware trials", "Team", "", "", "", "Finish"],
+        ["Pelvis pose estimate on Origin", "Sergio", "", "Check", "Work", ""],
+        ["Supervised hardware trials", "All", "", "", "", "Finish"],
         ["Demo + handoff", "All", "", "", "", ("Due Dec 3", {"bold": True})],
     ]
     table(s, 0.67, 1.5, 7.7, [2.75, 0.85, 1.0, 1.0, 1.0, 1.1], rows, size=11.5, header_size=12, row_h=0.46)
@@ -487,7 +517,7 @@ def build():
         text(s, 8.65, yy, 4.0, 0.34, lab, size=16, color=BLUE, bold=True)
         text(s, 8.65, yy + 0.38, 4.0, 0.7, body.split("\n"), size=13)
         yy += 1.35
-    footer(s, "Owners are placeholders to confirm in class. Simulation gains need instructor review for hardware.", page)
+    footer(s, "Owners are proposed; confirm in class. Simulation gains need instructor review for hardware.", page)
 
     prs.save(str(OUT))
     print(f"wrote {OUT}")
