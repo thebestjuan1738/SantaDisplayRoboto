@@ -1,0 +1,18 @@
+# Python 3.12. Tested 2026-11-18 on Windows 11 with these exact versions.
+mujoco==4.0.1
+onnxruntime==1.32.0
+numpy>=1.26
+pyyaml>=6.0
+pillow>=10
+imageio>=2.34
+imageio-ffmpeg>=0.5
+matplotlib>=3.8
+protobuf>=4.25        # tools/make_test_export.py writes ONNX through onnx's pure-Python schema
+onnx>=1.17            # only its onnx_ml_pb2 schema file is used (works even if its DLL is blocked)
+pytest>=8
+python-pptx>=1.0      # slides/build_deck.py
+
+# The TA's LearningRLsim (observation/action/ONNX loader for exported policies).
+# Install it separately WITHOUT deps -- it pins mujoco<4, and mujoco 3.x's DLL is
+# blocked by Windows Smart App Control on our laptops:
+#   pip install --no-deps "LearningRLsim @ git+https://github.com/mark-helwig/LearningRL#subdirectory=LearningRLsim"

@@ -1,0 +1,122 @@
+# SantaBot display -- every tunable number in one place.
+#
+# Scene geometry is given in INCHES, exactly as the brief states it, and
+# converted to metres in santabot/layout.py. Everything else is SI.
+#
+# World frame: the two tables sit end to end along +x with their FRONT edges on
+# y = 0 and their depth running toward +y. The seam where they touch is x = 0.
+# The robot faces +y (toward the tables), so its LEFT is -x. The gifts start on
+# the left table and are moved to the mirror-image spots on the right table.
+
+scene:
+  table:
+    length_in: 60.0        # along x
+    depth_in: 24.0         # along y
+    # "Waist level of the Roboto Origin": the pelvis (base_link) stands at
+    # 0.75 m in the nominal pose, and its collision hull spans 0.66-0.82 m.
+    # 29.5 in = 0.749 m. Change this one number if your tables differ.
+    height_in: 29.5
+    top_thickness_in: 1.0
+    leg_in: 2.0
+  gifts:
+    # Order the robot moves them in.
+    - name: small_gift
+      size_in: 8.0
+      mass_kg: 0.20        # empty cardboard; measure your real boxes
+      # Seam-side face 6 in from the seam edge (the table side closest to home).
+      side_offset_in: 6.0
+    - name: large_gift
+      size_in: 12.0
+      mass_kg: 0.45
+      # 6 in to the LEFT of the small gift (gap between their faces).
+      gap_left_of_previous_in: 6.0
+  # Front face of each gift, measured from the table's front edge. The brief
+  # does not fix this. 2 in keeps both gifts inside the Origin's ~0.43 m
+  # shoulder-to-wrist reach; at 6 in the 8 in gift's centre is out of reach
+  # (see README "Reach check").
+  gift_front_setback_in: 2.0
+  gift_friction: 0.9
+  home:
+    # 1 ft from the touching edges, on the seam line, facing the tables.
+    distance_from_edge_in: 12.0
+  tree:
+    # Between the two mirrored small-gift spots (on the seam), toward the back.
+    y_in: 17.0
+    base_radius_in: 5.0
+    height_in: 30.0
+
+robot:
+  # Pinned to the same rpo_description revision as the TA's LearningRL gitman.yml.
+  mjcf: vendor/rpo_description/mjcf/rpo.xml
+  spawn_height_m: 0.75
+  # Forearm contact pads: capsules on each elbow_yaw_link, from the elbow to the
+  # wrist. They stand in for the forearm shell and give a clean squeeze contact.
+  forearm_pad:
+    from_x: 0.03
+    to_x: 0.135
+    radius: 0.030
+    friction: 1.2
+  wrist_site_x: 0.135      # wrist point on the forearm axis, elbow_yaw_link frame
+
+physics:
+  # Elliptic friction cones with impratio 10 stop a squeezed box from slowly
+  # creeping through the forearms (MuJoCo's default pyramidal/1 lets a 0.45 kg
+  # box slide ~1 cm/s). Applies to every contact, feet included -- a sim
+  # choice to re-check against the hardware's actual grip.
+  cone: elliptic
+  impratio: 10.0
+
+control:
+  # Defaults used when no policy export is loaded. A loaded export's
+  # config.yaml (sim_dt, decimation, gains, default pose) always wins.
+  sim_dt: 0.005
+  decimation: 4            # 50 Hz high-level + policy rate
+
+navigation:
+  max_forward_mps: 0.25    # within Yuki's flat-walk command range (+/-0.35)
+  max_reverse_mps: 0.12
+  max_yaw_rate: 0.45       # rad/s, within the trained +/-0.5
+  accel_mps2: 0.25
+  yaw_accel: 0.8
+  pos_tolerance_m: 0.03
+  yaw_tolerance_rad: 0.05
+  turn_in_place_above_rad: 0.35   # heading error above which it stops and turns
+  k_heading: 1.6
+  k_distance: 1.2
+  approach_distance_m: 0.40   # pelvis-to-table-edge where it stops before stepping in
+  grasp_standoff_m: 0.11      # pelvis centre to table edge when grasping (hull front is +0.054)
+  back_off_m: 0.30            # reverse distance after a pick or place
+
+manipulation:
+  # Wrists are commanded slightly INSIDE the gift faces; the resulting PD error
+  # is the squeeze. Forearm axis sits pad-radius outside the contact surface.
+  squeeze_inset_m: 0.025
+  toe_in_m: 0.02              # elbows this much wider than the wrists
+  ik_elbow_weight: 0.3        # how strictly the forearm follows the gift side
+  open_clearance_m: 0.05      # extra clearance per side when opening
+  grasp_depth_frac: 0.55      # wrist this far along the gift depth (0 = front face)
+  ready_pullback_m: 0.12      # how far behind the grasp line the wrists wait
+  lift_m: 0.07                # commanded; PD sag under load leaves ~4 cm actual
+  carry_pullin_m: 0.03
+  place_drop_m: 0.006         # release this far above the table contact
+  move_time_s: 1.2            # default duration of one arm move (min-jerk)
+  squeeze_time_s: 0.8
+  settle_time_s: 0.4
+  arm_gain_scale_holding: 1.0 # multiply arm Kp while holding (tune squeeze force)
+
+assist:
+  # "full": the pelvis is held on the commanded path by a soft weld to a
+  # moving mocap frame, and the legs run a scripted stepping pattern. This is
+  # the pre-training stand-in and is labelled ASSISTED in every output.
+  # "none": the ONNX policy must balance and walk the robot itself.
+  weld_solref: [0.02, 1.0]
+  gait_hz: 1.25               # 0.8 s period, the same as Yuki's alternating-gait clock
+  hip_amp: 0.22
+  knee_amp: 0.45
+  ankle_amp: 0.20
+  turn_step_scale: 0.6
+
+trial:
+  max_time_s: 180.0
+  fall_height_m: 0.45
+  gift_place_tolerance_m: 0.05
