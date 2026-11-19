@@ -19,7 +19,7 @@ Model used for implementation: Claude Opus 5.5 (Claude Code). Every result below
 
 | # | Goal | Change | Command | Observation | Decision |
 |---|---|---|---|---|---|
-| 8 | Train arms and legs in one policy | New task `LearningRL-RPO-LocoManipulation-v0` on branch `student/santabot-rpo-locomanip` of the TA's repo: his G1 locomanipulation task with the Origin swapped in; wrist points tracked; Origin-sized target ranges; 0–0.3 kg forearm load | `ruff check . && ruff format --check . && pytest -m static LearningRLlab/tests` | Lint and the TA's static tests pass (9/9). Isaac Lab cannot run on our laptops, so the env has not been built or trained here. | Replaces the earlier plan to train a walk-only policy. |
+| 8 | Train arms and legs in one policy | New task `LearningRL-RPO-LocoManipulation-v0` on branch `student/cody-rpo-locomanip` of the TA's repo: his G1 locomanipulation task with the Origin swapped in; wrist points tracked; Origin-sized target ranges; 0–0.3 kg forearm load | `ruff check . && ruff format --check . && pytest -m static LearningRLlab/tests` | Lint and the TA's static tests pass (9/9). Isaac Lab cannot run on our laptops, so the env has not been built or trained here. | Replaces the earlier plan to train a walk-only policy. |
 | 9 | Policy drives the arms | The adapter feeds `hand_track` (FK wrist points of the controller's arm pose); arms are no longer overridden when the export has it | `pytest -q tests` | 5/5 pass. Over a full mission the wrist targets stay inside the training ranges. | Ready for the real export. |
 
 ## Open items

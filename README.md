@@ -76,7 +76,7 @@ To check the plumbing without a trained policy, `python tools/make_test_export.p
 
 ### Which task the TA should train
 
-**`LearningRL-RPO-LocoManipulation-v0`**, on branch `student/santabot-rpo-locomanip` of the TA's
+**`LearningRL-RPO-LocoManipulation-v0`**, on branch `student/cody-rpo-locomanip` of the TA's
 repo (github.com/mark-helwig/LearningRL). It is the TA's `LearningRL-G1-LocoManipulation-v0`
 with the Origin swapped in exactly as his `LearningRL-RPO-Walk-v0` does it:
 

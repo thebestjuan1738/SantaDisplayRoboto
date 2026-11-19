@@ -418,7 +418,7 @@ def build():
         ["Loader", "The TA's LearningRLsim: same observation assembly and action terms as learningrl-sim"],
         ["Observation", "86: ang vel, gravity, base_velocity, joint pos/vel, last action + 8 hand_track"],
         ["Commands fed", "base_velocity (vx, 0, wz) + hand_track (both wrists, pelvis frame)"],
-        ["Train", "LearningRL-RPO-LocoManipulation-v0, branch student/santabot-rpo-locomanip"],
+        ["Train", "LearningRL-RPO-LocoManipulation-v0, branch student/cody-rpo-locomanip"],
         ["Bring-up", "--assist full (policy limbs, pelvis held)  →  unassisted  →  run_eval.py"],
     ]
     table(s, 0.67, 1.6, 12.0, [2.2, 9.8], rows, size=14, header_size=14, row_h=0.52)
