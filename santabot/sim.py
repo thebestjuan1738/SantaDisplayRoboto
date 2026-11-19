@@ -4,10 +4,10 @@ Loop (per control step, 1 / (sim_dt * decimation) Hz):
 
   pose  = pelvis estimate (sim: ground truth)
   cmd   = MissionController.step(pose)          velocity + arm targets
-  hands = wrist points of cmd.arm_q (FK)         the hand_track command
-  q*    = backend.targets(cmd.velocity, hands)   policy, or scripted legs
-  if the policy has no hand command (or arm_control = override):
-      q*[arms] = cmd.arm_q[arms]                 controller owns the arms
+  hands = cmd.hands                              wrist points, planned directly (no IK)
+  q*    = backend.targets(cmd.velocity, hands)   the policy: legs AND arms
+  -- or, with no hand command (assisted mode, walk-only policy, arm_control = override):
+  q*[arms] = cmd.arm_q[arms]                     IK arm joints from the controller
   decimation x { tau = clip(Kp (q* - q) - Kd qdot); mj_step; move assist frame }
 
 The PD law, gains and effort clip are LearningRLsim's IdealPD equivalent.
@@ -100,7 +100,19 @@ class SantaTrial:
         if arm_control == "policy" and not self.backend.has_hands:
             raise ValueError("control.arm_control = policy, but the backend has no hand_track command")
         self.arms_by_policy = self.backend.has_hands and arm_control != "override"
-        self.ctl = MissionController(self.cfg, self.layout, self.ik, self.backend.default_pos, self.arm_idx)
+        # wrist space: the policy maps wrist targets to joints, so the controller
+        # plans wrist points directly. One forward-kinematics call gives the
+        # default arms' wrist points, the start and end of every arm sequence.
+        home = self.ik.fk(self.backend.default_pos)
+        self.ctl = MissionController(
+            self.cfg,
+            self.layout,
+            None if self.arms_by_policy else self.ik,
+            self.backend.default_pos,
+            self.arm_idx,
+            wrist_space=self.arms_by_policy,
+            home_wrists=np.concatenate([home["left"][0], home["right"][0]]),
+        )
         self.hold_scale = self.cfg["manipulation"]["arm_gain_scale_holding"]
 
         self.mocap_id = self.model.body(ASSIST_MOCAP).mocapid[0]
@@ -132,7 +144,9 @@ class SantaTrial:
         self.data.mocap_quat[self.mocap_id] = (np.cos(yaw / 2), 0, 0, np.sin(yaw / 2))
 
     def hand_command(self, arm_q: np.ndarray) -> np.ndarray:
-        """The 8-dim hand_track command for the controller's arm targets.
+        """hand_track for an IK arm pose (joint-space planning only, e.g. a policy
+        run with arm_control = override); in wrist space the controller sends
+        `cmd.hands` directly.
 
         Wrist points (the `<side>_wrist` sites, 0.135 m along each forearm -- the
         same points LearningRL-RPO-LocoManipulation-v0 tracks) of the commanded
@@ -189,7 +203,7 @@ class SantaTrial:
             if cmd.phase != last_phase:
                 res.phases.append((round(t, 2), cmd.phase))
                 last_phase = cmd.phase
-            self.hands = self.hand_command(cmd.arm_q)
+            self.hands = cmd.hands if cmd.hands is not None else self.hand_command(cmd.arm_q)
             q_target = self.backend.targets(cmd.velocity, t, self.hands)
             kp_now = kp.copy()
             if not self.arms_by_policy:

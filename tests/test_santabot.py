@@ -92,6 +92,12 @@ def test_onnx_locomanip_export_feeds_wrist_targets(tmp_path, cfg):
     tr = SantaTrial(cfg, policy_dir=run, assist="full")
     assert tr.backend.cfg.observations.total_dim == 86
     assert tr.backend.has_hands and tr.arms_by_policy
+    assert tr.ctl.wrist_space and tr.ctl.ik is None
+
+    def no_ik(*args, **kwargs):
+        raise AssertionError("IK must not run when the policy drives the arms")
+
+    tr.ik.solve = no_ik
     tr.run(max_time=17.0)  # through "ready arms", "reach" and "squeeze" of the first gift
     hands = np.asarray(tr.log["hands"])
     phase = np.asarray(tr.log["phase"])

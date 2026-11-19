@@ -5,13 +5,23 @@ A sequence of primitives, each of which runs until done:
   GoTo   -- unicycle navigation: turn in place, walk forward OR reverse, turn
             to a final heading. The lateral velocity command is always 0, so
             the robot never side-steps.
-  ArmMove-- a min-jerk joint-space move of both arms to an IK solution
-            computed in the pelvis frame when the move starts.
+  ArmMove-- a min-jerk move of both arms to a target computed from the gift
+            geometry in the pelvis frame when the move starts.
   Hold   -- stand still.
 
+The arms are planned in one of two spaces:
+
+  wrist space (a whole-body policy with a hand_track command): the arm moves
+      are min-jerk paths between WRIST POINTS, sent to the policy as
+      hand_track. No inverse kinematics -- the policy maps wrist targets to
+      joints itself.
+  joint space (assisted mode, or a walk-only policy): the wrist points are
+      solved to arm joint angles by IK and written to the arm joints.
+
 Every control step the controller outputs a `Command`:
-  velocity  (vx, vy=0, wz)  -> the locomotion policy's base_velocity command
-  arm_q     (10 joints)     -> overrides the policy's arm outputs
+  velocity  (vx, vy=0, wz)  -> the policy's base_velocity command
+  hands     (8) or None     -> hand_track, in wrist space
+  arm_q     (joint vector)  -> arm joint targets, in joint space
   phase     a label for logs and plots
 
 Inputs are only the pelvis pose estimate (x, y, z, yaw) and the known table
@@ -45,6 +55,7 @@ class Command:
     phase: str
     holding: str | None = None
     deactivated: bool = False
+    hands: np.ndarray | None = None  # hand_track (wrist space only)
 
 
 @dataclass
@@ -137,21 +148,31 @@ class GoTo(Primitive):
 
 
 class ArmMove(Primitive):
-    """Min-jerk move from the current arm targets to `target(c, ctl)`."""
+    """Min-jerk move from the current arm state to `target(c, ctl)`.
 
-    def __init__(self, target, seconds, label, holding=None):
+    The state is the two wrist points in wrist space, the joint vector in joint
+    space. `home=True` marks the move back to the default arms; in wrist space
+    the hand command goes idle (all zero) when it ends, handing the arms back
+    to the policy's own default.
+    """
+
+    def __init__(self, target, seconds, label, home=False):
         self.target_fn, self.seconds, self.label = target, seconds, label
-        self.holding = holding
+        self.home = home
 
     def start(self, c, ctl):
         super().start(c, ctl)
-        self.q0 = c.arm_q.copy()
-        self.q1 = self.target_fn(c, ctl)
+        self.x0 = ctl.arm_state()
+        self.x1 = self.target_fn(c, ctl)
+        if ctl.wrist_space and not self.home:
+            ctl.hands_active = True
 
     def update(self, c, ctl):
         ctl.set_velocity(0.0, 0.0, c)
         s = min_jerk((c.t - self.t0) / self.seconds)
-        ctl.arm_q = self.q0 + s * (self.q1 - self.q0)
+        ctl.set_arm_state(self.x0 + s * (self.x1 - self.x0))
+        if s >= 1.0 and self.home:
+            ctl.hands_active = False
         return s >= 1.0
 
 
@@ -176,7 +197,27 @@ class Deactivate(Primitive):
 
 # ---------------------------------------------------------------------------
 class MissionController:
-    def __init__(self, cfg: dict, layout: Layout, ik: ArmIK, q_default: np.ndarray, arm_idx: np.ndarray):
+    def __init__(
+        self,
+        cfg: dict,
+        layout: Layout,
+        ik: ArmIK | None,
+        q_default: np.ndarray,
+        arm_idx: np.ndarray,
+        wrist_space: bool = False,
+        home_wrists: np.ndarray | None = None,
+    ):
+        """`wrist_space`: plan arm moves as wrist points for a policy's hand_track
+        command (needs `home_wrists`, the default pose's wrist points, left then
+        right, pelvis frame); otherwise solve them to joints with `ik`."""
+        if wrist_space and home_wrists is None:
+            raise ValueError("wrist_space needs home_wrists")
+        if not wrist_space and ik is None:
+            raise ValueError("joint-space arm planning needs an ArmIK")
+        self.wrist_space = wrist_space
+        self.home_wrists = None if home_wrists is None else np.asarray(home_wrists, float).copy()
+        self.wrists = None if home_wrists is None else self.home_wrists.copy()
+        self.hands_active = False
         self.cfg = cfg
         self.nav = cfg["navigation"]
         self.man = cfg["manipulation"]
@@ -189,11 +230,13 @@ class MissionController:
         self.holding: str | None = None
         self.deactivated = False
         self.ik_error: dict[str, float] = {"left": 0.0, "right": 0.0}
-        forward = q_default.copy()
-        for side in ("left", "right"):
-            for j, v in zip(ARM_JOINTS[side], (-0.7, 0.0, 0.0, 0.6, 0.0)):
-                forward[ik.jmap.index[j]] = v
-        self.ik_seeds = (q_default.copy(), forward)
+        self.ik_seeds = ()
+        if ik is not None:
+            forward = q_default.copy()
+            for side in ("left", "right"):
+                for j, v in zip(ARM_JOINTS[side], (-0.7, 0.0, 0.0, 0.6, 0.0)):
+                    forward[ik.jmap.index[j]] = v
+            self.ik_seeds = (q_default.copy(), forward)
         self.dt = None
         self.plan = self._build_plan()
         self.k = -1
@@ -211,6 +254,23 @@ class MissionController:
 
     def stopped(self) -> bool:
         return abs(self.vel[0]) < 1e-3 and abs(self.vel[2]) < 1e-3
+
+    def arm_state(self) -> np.ndarray:
+        return self.wrists.copy() if self.wrist_space else self.arm_q.copy()
+
+    def set_arm_state(self, x: np.ndarray) -> None:
+        if self.wrist_space:
+            self.wrists = np.asarray(x, float)
+        else:
+            self.arm_q = np.asarray(x, float)
+
+    def hand_track(self) -> np.ndarray | None:
+        """`[left_active, right_active, left_xyz, right_xyz]`; all zero when idle."""
+        if not self.wrist_space:
+            return None
+        if not self.hands_active:
+            return np.zeros(8)
+        return np.concatenate([[1.0, 1.0], self.wrists])
 
     def to_pelvis(self, p_world: np.ndarray, pose: np.ndarray) -> np.ndarray:
         x, y, z, yaw = pose
@@ -240,6 +300,9 @@ class MissionController:
                 self.man["grasp_depth_frac"] if depth is None else depth,
                 toe_in=self.man["toe_in_m"],
             )
+            if self.wrist_space:
+                # the policy places the wrists itself: no IK
+                return np.concatenate([wrist["left"], wrist["right"]])
             q, err = self.ik.solve(c.arm_q, wrist, elbow, extra_seeds=self.ik_seeds, w_elbow=self.man["ik_elbow_weight"])
             self.ik_error = err
             out = c.arm_q.copy()
@@ -249,6 +312,8 @@ class MissionController:
         return fn
 
     def _nominal_arms(self, c, ctl):
+        if self.wrist_space:
+            return self.home_wrists.copy()
         out = c.arm_q.copy()
         out[self.arm_idx] = self.q_default[self.arm_idx]
         return out
@@ -291,7 +356,7 @@ class MissionController:
                 SetHolding(None),
                 ArmMove(self._arm_pose(g, "goal", open_gap, dx=back, dz=0.03), T, f"retract {name}"),
                 GoTo(g.goal[0], -stand - n["back_off_m"], None, direction="reverse", label=f"back off {name}"),
-                ArmMove(self._nominal_arms, T, "arms home"),
+                ArmMove(self._nominal_arms, T, "arms home", home=True),
             ]
         hx, hy, hyaw = lay.home
         plan += [
@@ -311,7 +376,9 @@ class MissionController:
             c.arm_q = self.arm_q.copy()
             self._advance(c)
         label = self.current.label if self.current else "done"
-        return Command(self.vel.copy(), self.arm_q.copy(), label, self.holding, self.deactivated)
+        return Command(
+            self.vel.copy(), self.arm_q.copy(), label, self.holding, self.deactivated, hands=self.hand_track()
+        )
 
     def _advance(self, c: Ctx) -> None:
         self.k += 1
