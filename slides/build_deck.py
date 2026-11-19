@@ -408,17 +408,17 @@ def build():
     text(s, xs[1] + bw, mid - 0.62, 1.5, 0.55, ["all 23", "joints"], size=12, color=MUTED, align=PP_ALIGN.CENTER)
     y2 = 4.0
     b4 = rect(s, xs[0], y2, bw, 1.2)
-    box_text(b4, ["Forearm-squeeze IK", "arm pose → wrist points"], size=13)
+    box_text(b4, ["Wrist planner", "gift geometry → wrist points"], size=13)
     arrow(s, xs[0] + bw / 2, y + bh, xs[0] + bw / 2, y2)
-    # orange hand-command path: IK box -> right -> up into the policy box
+    # orange hand-command path: wrist planner -> right -> up into the policy box
     ox = xs[1] + bw / 2
     seg = s.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(xs[0] + bw), Inches(y2 + 0.6), Inches(ox), Inches(y2 + 0.6))
     seg.line.color.rgb = ORANGE
     seg.line.width = Pt(1.75)
     arrow(s, ox, y2 + 0.6, ox, y + bh, color=ORANGE)
     text(s, xs[0] + bw + 0.1, y2 + 0.68, 4.2, 0.3, "hand_track: wrist targets", size=12, color=ORANGE, bold=True)
-    b5 = rect(s, xs[2] + 1.2, y2, bw - 1.2, 1.2, fill=PAPER, line=SOFT)
-    box_text(b5, ["Until trained", "weld + scripted", "legs; IK arms"], size=12)
+    b5 = rect(s, xs[2] + 0.4, y2, bw - 0.4, 1.2, fill=PAPER, line=SOFT)
+    box_text(b5, ["Until trained", "weld + scripted legs;", "IK arms (assisted only)"], size=12)
     text(s, 0.67, 5.55, 12.0, 0.7,
          "Navigation is a unicycle: turn in place above 0.35 rad of heading error, otherwise walk or reverse with "
          "heading feedback, then turn to the final yaw. It reverses when the goal is behind and closer than 0.6 m.",
@@ -442,7 +442,7 @@ def build():
     table(s, 0.67, 1.6, 12.0, [2.2, 9.8], rows, size=14, header_size=14, row_h=0.52)
     text(s, 0.67, 5.45, 12.0, 0.7,
          ["Verified with a stand-in export in the same format (zero-output MLP, 86 inputs): it loads, the hand",
-          "command carries the IK wrist points, and every target stays inside the task's training ranges."],
+          "command carries the controller's planned wrist points, all inside the task's training ranges."],
          size=14, color=MUTED)  # fmt: skip
     footer(s, "python run_trial.py --policy exports/<name>   is the whole integration step.", page)
 
@@ -619,6 +619,31 @@ def build():
 
     prs.save(str(OUT))
     print(f"wrote {OUT}")
+    export_single(OUT, CONTROLLER_SLIDE, OUT.with_name("SantaBot_controller_slide.pptx"))
+
+
+CONTROLLER_SLIDE = 7  # "Controller: one mission layer over one whole-body policy"
+
+
+def export_single(deck: Path, number: int, out: Path) -> None:
+    """Save slide `number` (1-based) of `deck` on its own, for pasting into another deck.
+
+    The slide-number text box is dropped: the slide will sit at a different
+    position in the shared deck, whose own numbering applies.
+    """
+    prs = Presentation(str(deck))
+    ids = prs.slides._sldIdLst
+    keep = list(ids)[number - 1]
+    for sld_id in list(ids):
+        if sld_id is not keep:
+            prs.part.drop_rel(sld_id.rId)
+            ids.remove(sld_id)
+    slide = prs.slides[0]
+    for shape in list(slide.shapes):
+        if shape.has_text_frame and shape.text_frame.text.strip() == str(number) and shape.left > Inches(12):
+            shape._element.getparent().remove(shape._element)
+    prs.save(str(out))
+    print(f"wrote {out}")
 
 
 if __name__ == "__main__":
