@@ -1,7 +1,7 @@
 """Write a STAND-IN policy export in the exact layout the TA's pipeline produces.
 
-  python tools/make_test_export.py exports/_test_zero            # 78-dim walk schema
-  python tools/make_test_export.py exports/_test_clock --clock   # + phase_clock (80-dim)
+  python tools/make_test_export.py exports/_test_locomanip --hands   # RPO locomanip schema (86 obs)
+  python tools/make_test_export.py exports/_test_walk                # walk-only schema (78 obs)
 
 The ONNX graph is an untrained MLP whose output is all zeros, so the robot
 just holds its default pose. It exists only to prove the plumbing: that a
@@ -9,9 +9,12 @@ real export dropped into exports/ is loaded, its observation vector is
 assembled to the right size, and its actions reach the joints. It is NOT a
 walking policy -- run it with --assist full.
 
-The schema mirrors LearningRL-RPO-FlatWalk-v0 / ForwardWalk-v0 (78 obs, 23
-actions) as recorded in the student branch's MULTI_POLICY_PLAN.md; a real
-export's config.yaml replaces all of this.
+The schema mirrors what LearningRLlab's exporter writes for
+LearningRL-RPO-LocoManipulation-v0: the G1/RPO walk's policy observations
+(base_ang_vel x0.2, projected_gravity, base_velocity, joint_pos_rel,
+joint_vel_rel x0.05, last_action = 78) plus the 8-dim hand_track command,
+and one JointPositionAction over all 23 joints (scale 0.25, default offset).
+A real export's config.yaml replaces all of this.
 """
 
 from __future__ import annotations
@@ -29,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from santabot.robot import JOINT_NAMES, default_gains, default_pose  # noqa: E402
 
 
-def build_config(clock: bool) -> dict:
+def build_config(hands: bool) -> dict:
     n = len(JOINT_NAMES)
     kp, kd, eff = default_gains()
     terms = []
@@ -49,15 +52,15 @@ def build_config(clock: bool) -> dict:
     add("joint_pos_rel", "joint_pos_rel", n)
     add("joint_vel_rel", "joint_vel_rel", n, 0.05)
     add("last_action", "last_action", n)
-    if clock:
-        add("gait_clock", "phase_clock", 2)
+    if hands:
+        add("hand_track", "generated_commands", 8, params={"command_name": "hand_track"})
     return {
         "policy_frequency_hz": 50.0,
         "sim_frequency_hz": 200.0,
         "sim_dt": 0.005,
         "decimation": 4,
         "robot": "roboparty_rpo",
-        "task": "SantaBot-StandIn-ZeroPolicy-PLAY",
+        "task": "LearningRL-RPO-LocoManipulation-v0-PLAY" if hands else "LearningRL-RPO-Walk-v0-PLAY",
         "run": {"name": "stand-in", "checkpoint": None, "note": "untrained zero-output stand-in"},
         "init_state": {"pos": [0.0, 0.0, 0.75]},
         "observations": {"total_dim": start, "terms": terms},
@@ -66,12 +69,32 @@ def build_config(clock: bool) -> dict:
                 "name": "base_velocity",
                 "type": "UniformVelocityCommandCfg",
                 "obs_slice": [6, 9],
-                "ranges": {"lin_vel_x": [-0.35, 0.35], "lin_vel_y": [-0.35, 0.35], "ang_vel_z": [-0.5, 0.5], "heading": None},
+                "ranges": {"lin_vel_x": [-1.0, 1.0], "lin_vel_y": [-1.0, 1.0], "ang_vel_z": [-1.0, 1.0], "heading": None},
                 "heading_command": False,
-                "rel_standing_envs": 0.25,
-                "resampling_time_range": [6.0, 10.0],
+                "rel_standing_envs": 0.02,
+                "resampling_time_range": [10.0, 10.0],
             }
-        ],
+        ]
+        + (
+            [
+                {
+                    "name": "hand_track",
+                    "type": "HandPosCommandCfg",
+                    "obs_slice": [78, 86],
+                    "ranges": {
+                        "pos_x": [0.0, 0.4],
+                        "pos_y": [-0.35, 0.35],
+                        "pos_y_left": [0.0, 0.35],
+                        "pos_y_right": [-0.35, 0.0],
+                        "pos_z": [-0.15, 0.35],
+                    },
+                    "rel_standing_envs": 0.1,
+                    "resampling_time_range": [0.5, 2.0],
+                }
+            ]
+            if hands
+            else []
+        ),
         "actions": {
             "total_dim": n,
             "terms": [
@@ -167,11 +190,11 @@ def build_onnx(obs_dim: int, act_dim: int, path: Path) -> None:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("out")
-    ap.add_argument("--clock", action="store_true", help="append the alternating-gait phase_clock observation")
+    ap.add_argument("--hands", action="store_true", help="LearningRL-RPO-LocoManipulation-v0 schema (+ hand_track)")
     a = ap.parse_args()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    cfg = build_config(a.clock)
+    cfg = build_config(a.hands)
     with open(out / "config.yaml", "w", encoding="utf-8") as fh:
         yaml.safe_dump(cfg, fh, sort_keys=False)
     build_onnx(cfg["observations"]["total_dim"], cfg["actions"]["total_dim"], out / "policy.onnx")

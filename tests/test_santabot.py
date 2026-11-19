@@ -68,13 +68,39 @@ def test_ik_reaches_both_grasps(cfg):
         assert max(err.values()) < 0.02, (g.name, err)
 
 
-def test_onnx_export_plumbing(tmp_path, cfg):
+def test_onnx_walk_export_plumbing(tmp_path, cfg):
     pytest.importorskip("LearningRLsim")
-    run = tmp_path / "standin"
-    subprocess.run([sys.executable, str(ROOT / "tools" / "make_test_export.py"), str(run), "--clock"], check=True)
+    run = tmp_path / "walk"
+    subprocess.run([sys.executable, str(ROOT / "tools" / "make_test_export.py"), str(run)], check=True)
     from santabot.sim import SantaTrial
 
     tr = SantaTrial(cfg, policy_dir=run, assist="none")
-    assert tr.backend.cfg.observations.total_dim == 80
+    assert tr.backend.cfg.observations.total_dim == 78
+    assert not tr.arms_by_policy  # no hand command: the controller overrides the arms
     res = tr.run(max_time=3.0)
     assert not res.fell  # zero-action stand-in holds the default pose
+
+
+def test_onnx_locomanip_export_feeds_wrist_targets(tmp_path, cfg):
+    """A LearningRL-RPO-LocoManipulation-v0 export: the policy owns the arms, and the
+    hand_track command it observes is the wrist points of the controller's arm pose."""
+    pytest.importorskip("LearningRLsim")
+    run = tmp_path / "locomanip"
+    subprocess.run([sys.executable, str(ROOT / "tools" / "make_test_export.py"), str(run), "--hands"], check=True)
+    from santabot.sim import SantaTrial
+
+    tr = SantaTrial(cfg, policy_dir=run, assist="full")
+    assert tr.backend.cfg.observations.total_dim == 86
+    assert tr.backend.has_hands and tr.arms_by_policy
+    tr.run(max_time=17.0)  # through "ready arms", "reach" and "squeeze" of the first gift
+    hands = np.asarray(tr.log["hands"])
+    phase = np.asarray(tr.log["phase"])
+    assert np.all(hands[phase == "activate"] == 0.0)  # default arms: idle row
+    squeeze = hands[phase == "squeeze small_gift"]
+    assert squeeze.size and np.all(squeeze[:, :2] == 1.0)
+    # wrists in front of the pelvis, left at +y and right at -y, at gift height
+    assert np.all(squeeze[:, 2] > 0.15) and np.all(squeeze[:, 3] > 0.05) and np.all(squeeze[:, 6] < -0.05)
+    assert np.all((squeeze[:, 4] > 0.0) & (squeeze[:, 4] < 0.3))
+    # and that is exactly what the policy observed in its hand_track slice
+    obs_hands = tr.backend.commands.value("hand_track")
+    assert obs_hands.shape == (8,)

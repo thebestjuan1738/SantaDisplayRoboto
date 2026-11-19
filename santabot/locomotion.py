@@ -1,14 +1,18 @@
-"""Low-level locomotion backends: the place a trained ONNX policy plugs in.
+"""Low-level backends: the place a trained ONNX policy plugs in.
 
 Both backends answer the same question once per control step:
 
-    targets(velocity_cmd) -> joint position targets for all joints (+ gains)
+    targets(velocity_cmd, t, hands) -> joint position targets for all joints
 
 * `OnnxPolicy` runs an export from the TA's LearningRL pipeline: a run
   directory holding `config.yaml`, `policy.onnx` and `policy.onnx.data`
   (written by LearningRLlab's play/export script). Observation assembly,
   action processing and the ONNX session are the TA's own LearningRLsim code,
   so the policy sees exactly what LearningRLsim's sim2sim replay would feed it.
+  An export of `LearningRL-RPO-LocoManipulation-v0` also observes `hand_track`
+  (`[left_active, right_active, left_xyz, right_xyz]`, wrist points in the
+  yaw-aligned root frame); `has_hands` is then True and the policy drives the
+  arms as well as the legs.
 * `ScriptedGait` is the pre-training stand-in. It steps the legs in a fixed
   pattern while the pelvis is carried along the commanded path by the assist
   weld. It is NOT a walking controller and is always reported as ASSISTED.
@@ -83,37 +87,23 @@ class RobotView:
 
 
 class _Commands:
-    """`ctx.commands.value(name)`: the high-level controller's latest command."""
+    """`ctx.commands.value(name)`: the high-level controller's latest commands."""
+
+    SUPPORTED = ("base_velocity", "hand_track")
 
     def __init__(self):
         self.velocity = np.zeros(3)
+        self.hands = np.zeros(8)  # all-zero = the training side's idle row
 
     def value(self, name: str) -> np.ndarray:
         if name == "base_velocity":
             return self.velocity.copy()
+        if name == "hand_track":
+            return self.hands.copy()
         raise KeyError(
             f"the policy observes command '{name}', which the SantaBot controller does not produce. "
-            "Only 'base_velocity' (vx, vy, wz) is supported."
+            f"Supported: {self.SUPPORTED}."
         )
-
-
-def _register_extra_observations():
-    """Observation terms used by the student RPO tasks that LearningRLsim lacks.
-
-    `phase_clock` (LearningRL-RPO-AlternatingWalk-v0): sin/cos of a 0.8 s gait
-    clock driven by episode time. Episode time here = time since the policy
-    was activated.
-    """
-    from LearningRLsim.registry import OBSERVATIONS, observation
-
-    if "phase_clock" in OBSERVATIONS:
-        return
-
-    @observation("phase_clock")
-    def _phase_clock(ctx, term):
-        period = float(term.params.get("period", 0.8)) if term.params else 0.8
-        a = 2 * np.pi * ctx.episode_time / period
-        return np.array([np.sin(a), np.cos(a)])
 
 
 class OnnxPolicy:
@@ -131,13 +121,16 @@ class OnnxPolicy:
                 "Running an ONNX export needs the TA's LearningRLsim package. Install it with:\n"
                 '  pip install "LearningRLsim @ git+https://github.com/mark-helwig/LearningRL#subdirectory=LearningRLsim"'
             ) from exc
-        _register_extra_observations()
         self._obs_lib = obs_lib
         self.cfg = runconfig.load(run_dir)
         if self.cfg.robot not in (None, "roboparty_rpo"):
             raise ValueError(f"{run_dir}: export is for robot '{self.cfg.robot}', not roboparty_rpo")
         self.joint_order = tuple(self.cfg.joint_order)
         self.jmap = jmap_factory(self.joint_order)
+        unsupported = [c.name for c in self.cfg.commands if c.name not in _Commands.SUPPORTED]
+        if unsupported:
+            raise ValueError(f"{run_dir}: export declares command(s) {unsupported}; supported: {_Commands.SUPPORTED}")
+        self.has_hands = any(c.name == "hand_track" for c in self.cfg.commands)
         self.policy = Policy(Path(run_dir) / "policy.onnx", self.cfg)
         self.terms = act_lib.build(self.cfg)
         self.command = ActuatorCommand.nominal(self.cfg)
@@ -163,11 +156,12 @@ class OnnxPolicy:
         model.dof_armature[self.jmap.dof] = self.cfg.actuators.armature
         model.dof_frictionloss[self.jmap.dof] = self.cfg.actuators.friction
 
-    def targets(self, velocity: np.ndarray, t: float) -> np.ndarray:
+    def targets(self, velocity: np.ndarray, t: float, hands: np.ndarray | None = None) -> np.ndarray:
         if self.t_start is None:
             self.t_start = t
         self.ctx.episode_time = t - self.t_start
         self.commands.velocity = np.asarray(velocity, float)
+        self.commands.hands = np.zeros(8) if hands is None else np.asarray(hands, float)
         obs = self._obs_lib.assemble(self.ctx)
         raw = self.policy(obs)
         for term, tc in zip(self.terms, self.cfg.actions.terms):
@@ -186,6 +180,7 @@ class ScriptedGait:
     """
 
     name = "assisted-scripted-gait"
+    has_hands = False
 
     def __init__(self, cfg: dict, model, data, jmap_factory):
         self.a = cfg["assist"]
@@ -208,7 +203,7 @@ class ScriptedGait:
     def apply_to_model(self, model):
         pass
 
-    def targets(self, velocity: np.ndarray, t: float) -> np.ndarray:
+    def targets(self, velocity: np.ndarray, t: float, hands: np.ndarray | None = None) -> np.ndarray:
         dt = 0.0 if self.last_t is None else t - self.last_t
         self.last_t = t
         vx, _, wz = velocity

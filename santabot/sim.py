@@ -4,8 +4,10 @@ Loop (per control step, 1 / (sim_dt * decimation) Hz):
 
   pose  = pelvis estimate (sim: ground truth)
   cmd   = MissionController.step(pose)          velocity + arm targets
-  q*    = backend.targets(cmd.velocity)          policy or scripted legs
-  q*[arms] = cmd.arm_q[arms]                     controller owns the arms
+  hands = wrist points of cmd.arm_q (FK)         the hand_track command
+  q*    = backend.targets(cmd.velocity, hands)   policy, or scripted legs
+  if the policy has no hand command (or arm_control = override):
+      q*[arms] = cmd.arm_q[arms]                 controller owns the arms
   decimation x { tau = clip(Kp (q* - q) - Kd qdot); mj_step; move assist frame }
 
 The PD law, gains and effort clip are LearningRLsim's IdealPD equivalent.
@@ -94,6 +96,10 @@ class SantaTrial:
         self.arm_idx = self.jmap.idx(arm_names)
         self.torso_idx = self.jmap.idx(["torso_joint"])
         self.ik = ArmIK(self.model, self.jmap)
+        arm_control = self.cfg["control"].get("arm_control", "auto")
+        if arm_control == "policy" and not self.backend.has_hands:
+            raise ValueError("control.arm_control = policy, but the backend has no hand_track command")
+        self.arms_by_policy = self.backend.has_hands and arm_control != "override"
         self.ctl = MissionController(self.cfg, self.layout, self.ik, self.backend.default_pos, self.arm_idx)
         self.hold_scale = self.cfg["manipulation"]["arm_gain_scale_holding"]
 
@@ -123,6 +129,27 @@ class SantaTrial:
         x, y, yaw = self.assist_pose
         self.data.mocap_pos[self.mocap_id] = (x, y, self.cfg["robot"]["spawn_height_m"])
         self.data.mocap_quat[self.mocap_id] = (np.cos(yaw / 2), 0, 0, np.sin(yaw / 2))
+
+    def hand_command(self, arm_q: np.ndarray) -> np.ndarray:
+        """The 8-dim hand_track command for the controller's arm targets.
+
+        Wrist points (the `<side>_wrist` sites, 0.135 m along each forearm -- the
+        same points LearningRL-RPO-LocoManipulation-v0 tracks) of the commanded
+        arm pose, by forward kinematics with the pelvis at the origin. Both hands
+        are active whenever the arms are away from their default pose; otherwise
+        the row is all zero, the training side's idle command, and the policy
+        holds its own arms.
+        """
+        arms = arm_q[self.arm_idx] - self.backend.default_pos[self.arm_idx]
+        if np.max(np.abs(arms)) < 1e-3:
+            return np.zeros(8)
+        fk = self.ik.fk(arm_q)
+        return np.concatenate([[1.0, 1.0], fk["left"][0], fk["right"][0]])
+
+    def wrist_points(self) -> np.ndarray:
+        """Actual wrist points (left, right) in the pelvis frame, from the measured joints."""
+        fk = self.ik.fk(self.data.qpos[self.jmap.qpos])
+        return np.concatenate([fk["left"][0], fk["right"][0]])
 
     def pose_estimate(self) -> np.ndarray:
         p = self.view.base_pos_w
@@ -161,12 +188,14 @@ class SantaTrial:
             if cmd.phase != last_phase:
                 res.phases.append((round(t, 2), cmd.phase))
                 last_phase = cmd.phase
-            q_target = self.backend.targets(cmd.velocity, t)
-            q_target[self.arm_idx] = cmd.arm_q[self.arm_idx]
-            q_target[self.torso_idx] = self.backend.default_pos[self.torso_idx]
+            self.hands = self.hand_command(cmd.arm_q)
+            q_target = self.backend.targets(cmd.velocity, t, self.hands)
             kp_now = kp.copy()
-            if cmd.holding:
-                kp_now[self.arm_idx] *= self.hold_scale
+            if not self.arms_by_policy:
+                q_target[self.arm_idx] = cmd.arm_q[self.arm_idx]
+                q_target[self.torso_idx] = self.backend.default_pos[self.torso_idx]
+                if cmd.holding:
+                    kp_now[self.arm_idx] *= self.hold_scale
             for _ in range(self.backend.decimation):
                 q = self.data.qpos[self.jmap.qpos]
                 qd = self.data.qvel[self.jmap.dof]
@@ -263,6 +292,11 @@ class SantaTrial:
         L["grip_force"].append(self.pad_force(cmd.holding) if cmd.holding else 0.0)
         L["holding"].append(cmd.holding or "")
         L["ik_err"].append(max(self.ctl.ik_error.values()))
+        L["hands"].append(self.hands.copy())
+        active = self.hands[0] > 0.5
+        L["hand_err"].append(
+            float(np.linalg.norm((self.wrist_points() - self.hands[2:]).reshape(2, 3), axis=1).max()) if active else 0.0
+        )
         L["assist_err"].append(
             float(np.linalg.norm(self.assist_pose[:2] - pose[:2])) if self.assisted else 0.0
         )
@@ -284,5 +318,5 @@ class SantaTrial:
 
 LOG_KEYS = (
     "t", "phase", "pose", "cmd", "q", "q_target", "tau", "gift_pos",
-    "grip_force", "holding", "ik_err", "assist_err",
+    "grip_force", "holding", "ik_err", "assist_err", "hands", "hand_err",
 )  # fmt: skip

@@ -9,7 +9,7 @@ The Roboto Origin (RPO, 23 DoF) runs a holiday display:
 
 A tree stands between the two mirrored spots. The robot walks forward, reverses and turns in place, and **never side-steps**: the lateral velocity command is zero at every step.
 
-> **Status (2026-11-18): no locomotion policy has been trained yet.** Every
+> **Status (2026-11-19): no policy has been trained yet.** Every
 > rollout so far runs in **ASSISTED** mode:
 > - A soft weld carries the pelvis along the path the controller commands, and the legs follow a scripted stepping pattern.
 > - The arms, the squeeze and the gifts are real MuJoCo contact physics.
@@ -18,14 +18,17 @@ A tree stands between the two mirrored spots. The robot walks forward, reverses 
 > Every video, plot and result file is labelled with its mode.
 
 ```
- high-level controller (this repo)            low-level policy (TA's LearningRL pipeline)
- ─────────────────────────────────            ─────────────────────────────────────────────
- pose estimate ─► MissionController ─ vx, wz ─► base_velocity command ─► policy.onnx ─► 23 joint targets
-                  │  GoTo / ArmMove / Hold                                                  │
-                  └─ arm IK (forearm squeeze) ─ 10 arm joint targets ──── override ────────►│
-                                                                                            ▼
-                                                                         PD → MuJoCo (or the robot)
+ high-level controller (this repo)                 whole-body policy (TA's LearningRL pipeline)
+ ─────────────────────────────────                 ────────────────────────────────────────────
+ pose estimate ─► MissionController ── vx, wz ─────► base_velocity ─┐
+                  │  GoTo / ArmMove / Hold                          ├► policy.onnx ─► 23 joint targets
+                  └─ arm IK → wrist points ── hand_track ───────────┘   (legs AND arms)      │
+                                                                                             ▼
+                                                                          PD → MuJoCo (or the robot)
 ```
+
+The policy is trained by `LearningRL-RPO-LocoManipulation-v0` on our branch of the TA's repo: one
+network walks to the velocity command and puts its wrists where the hand command asks.
 
 ## Quick start
 
@@ -64,14 +67,25 @@ What the adapter (`santabot/locomotion.py: OnnxPolicy`) does:
 - **Reuses the TA's code.** It runs the TA's `LearningRLsim` on the export's `config.yaml`, using its observation assembly, action terms and ONNX session. The policy sees exactly what `learningrl-sim` would feed it.
 - **Follows the export's settings.** Joint order, default pose, PD gains, armature, friction, `sim_dt` and decimation all come from the export.
 - **Feeds the velocity command.** The `base_velocity` command term is `(vx, 0, wz)` from the mission controller.
-- **Adds the gait clock.** It registers `phase_clock` (sin/cos of a 0.8 s gait clock) for `LearningRL-RPO-AlternatingWalk-v0`, which `LearningRLsim` does not implement.
-- **Takes over the arms.** The 10 arm joint targets from the policy are replaced by the controller's IK targets, and the torso is held at its default.
+- **Feeds the hand command.** `hand_track` is `[1, 1, left_wrist_xyz, right_wrist_xyz]` in the pelvis frame: the wrist points (0.135 m along each forearm, the point the task trains on) of the controller's IK arm pose, so the min-jerk arm moves, the open/squeeze widths and the lift all arrive as wrist targets. With the arms at their default pose the row is all zeros, which is the training side's "no hand target" command, and the policy holds its own arms.
+- **Lets the policy drive the arms.** With a `hand_track` export the controller no longer writes arm joints. An export without one (a walk-only policy) falls back to overriding the 10 arm joints with the IK solution; `control.arm_control: override` forces that fallback for comparison.
 
-To check the plumbing without a trained policy, `python tools/make_test_export.py exports/_test_zero` writes a stand-in export in the same format. Its policy outputs zeros, so the robot just holds its pose.
+Over a full mission the wrist targets stay inside the ranges the task trains on (x 0.04–0.35 m, |y| 0.10–0.25 m, z −0.11–0.23 m against 0–0.40, 0–0.35 and −0.15–0.35).
+
+To check the plumbing without a trained policy, `python tools/make_test_export.py exports/_test_locomanip --hands` writes a stand-in export in the locomanipulation format (86 observations, 23 actions). Its policy outputs zeros, so the robot just holds its pose.
 
 ### Which task the TA should train
 
-The controller sends the following commands:
+**`LearningRL-RPO-LocoManipulation-v0`**, on branch `student/santabot-rpo-locomanip` of the TA's
+repo (github.com/mark-helwig/LearningRL). It is the TA's `LearningRL-G1-LocoManipulation-v0`
+with the Origin swapped in exactly as his `LearningRL-RPO-Walk-v0` does it:
+
+- **Same training recipe as the G1 task.** Rewards and weights, the hand-tracking weight ramp (0 → 2 over 5000 PPO iterations), terminations, flat ground, physics and PPO are all unchanged.
+- **Tracked points are the wrists.** The Origin has no hand link, so `RPOHandPosCommand` tracks a point 0.135 m along each forearm (`<side>_elbow_yaw_link`). The command format is still the G1's 8 values, under the same `HandPosCommandCfg` type, so LearningRLsim replays it unchanged.
+- **Target ranges sized to the Origin's arm.** x 0–0.40 m, each side 0–0.35 m, z −0.15–0.35 m.
+- **Forearm load.** 0–0.3 kg is added to each forearm at startup, so the policy learns to balance with a light gift held in front of it.
+
+Velocity commands train over ±1 m/s and ±1 rad/s, which covers everything the controller sends:
 
 | Command | Range |
 |---|---|
@@ -80,11 +94,14 @@ The controller sends the following commands:
 | Turn in place / yaw rate | up to 0.45 rad/s |
 | Lateral speed | always 0 |
 
-- **`LearningRL-RPO-ForwardWalk-v0` is not enough.** It only learns 0.15–0.25 m/s forward, with no reverse and no turning.
-- **`LearningRL-RPO-FlatWalk-v0` covers all of it:** ±0.35 m/s and ±0.5 rad/s. If the TA can, set `lin_vel_y = (0, 0)` in its config, since the robot never side-steps.
-- **The alternating-gait variant also works** if it trains with the FlatWalk command ranges.
+Train and export it the usual way, from `/workspace/isaaclab` in the TA's container:
 
-**Known gap:** carrying a gift adds 0.2–0.45 kg held in front of the body, and the arms are in a pose the walk policy never saw. Yuki's MULTI_POLICY_PLAN.md already flags that loaded locomotion needs its own training. The first unassisted runs will show whether that matters for these light, empty boxes.
+```bash
+./isaaclab.sh -p source/LearningRLlab/scripts/train.py --task LearningRL-RPO-LocoManipulation-v0 --viz kit --enable_cameras physics=newton_mjwarp
+./isaaclab.sh -p source/LearningRLlab/scripts/play.py  --task LearningRL-RPO-LocoManipulation-v0-PLAY --viz kit --enable_cameras physics=newton_mjwarp --video
+```
+
+**Known limit:** the policy is rewarded for wrist *position*, and nothing in training pushes against an object. How hard it squeezes a real gift therefore depends on how far inside the gift faces the targets sit (`manipulation.squeeze_inset_m`). That is the first thing to tune once the export arrives.
 
 ## Scene, and the interpretations made
 

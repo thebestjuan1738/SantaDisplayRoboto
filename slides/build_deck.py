@@ -257,7 +257,7 @@ def build():
     text(s, 0.83, 5.45, 11.46, 0.34, "Cody, Sergio and Yuki  /  Thursday, November 19, 2026  /  locomotion policy not yet trained",
          size=17.25, color=SOFT)  # fmt: skip
     notes(s, "Four-minute slot. Lead with the status: the controller, scene and policy hand-off are built and "
-             "evaluated; the walking policy itself has not been trained, so every rollout shown is ASSISTED.")  # fmt: skip
+             "evaluated; the whole-body policy itself has not been trained, so every rollout shown is ASSISTED.")  # fmt: skip
 
     # 1b -- the brief (grammar-corrected) -----------------------------------------
     page += 1
@@ -298,9 +298,9 @@ def build():
         s,
         [
             ("Built and tested", "Scene, high-level controller, forearm-squeeze IK, ONNX policy adapter,\n"
-                                 "evaluation and diagnosis tools. 4/4 unit tests pass."),
-            ("Not yet trained", "The walking policy. The task is ready in the TA's LearningRL pipeline;\n"
-                                "the GPU run has not happened, so there is no policy.onnx yet."),
+                                 "evaluation and diagnosis tools. 5/5 unit tests pass."),
+            ("Not yet trained", "The whole-body policy, legs and arms together. Its task is ready on our\n"
+                                "branch of the TA's repo; the GPU run has not happened yet."),
             ("What you will see", "An ASSISTED rollout: a soft weld carries the pelvis along the path the\n"
                                   "controller commands and the legs follow a scripted stepping pattern."),
             ("What is real physics", "Arm PD control, forearm-to-gift contact and friction, gift mass and\n"
@@ -375,33 +375,33 @@ def build():
     # 5 -- architecture --------------------------------------------------------
     page += 1
     s = new_slide(prs)
-    title(s, "Controller: one mission layer over a swappable walking policy")
+    title(s, "Controller: one mission layer over one whole-body policy")
     y, bw, bh = 1.8, 3.0, 1.5
     xs = (0.67, 5.17, 9.67)
     b1 = rect(s, xs[0], y, bw, bh)
     box_text(b1, ["Mission controller", "GoTo · ArmMove · Hold", "pose estimate + layout"], size=13)
     b2 = rect(s, xs[1], y, bw, bh)
-    box_text(b2, ["Locomotion policy", "policy.onnx (LearningRL)", "obs/actions: LearningRLsim"], size=13)
+    box_text(b2, ["Whole-body policy", "policy.onnx: legs + arms", "RPO-LocoManipulation-v0"], size=13)
     b3 = rect(s, xs[2], y, bw, bh)
     box_text(b3, ["PD → MuJoCo / Origin", "23 joint targets", "gains + limits from export"], size=13)
     mid = y + bh / 2
     arrow(s, xs[0] + bw, mid, xs[1], mid)
     text(s, xs[0] + bw, mid - 0.62, 1.5, 0.55, ["vx, wz", "vy = 0"], size=12, color=MUTED, align=PP_ALIGN.CENTER)
     arrow(s, xs[1] + bw, mid, xs[2], mid)
-    text(s, xs[1] + bw, mid - 0.62, 1.5, 0.55, ["legs +", "torso"], size=12, color=MUTED, align=PP_ALIGN.CENTER)
+    text(s, xs[1] + bw, mid - 0.62, 1.5, 0.55, ["all 23", "joints"], size=12, color=MUTED, align=PP_ALIGN.CENTER)
     y2 = 4.0
     b4 = rect(s, xs[0], y2, bw, 1.2)
-    box_text(b4, ["Forearm-squeeze IK", "wrist + elbow, multi-start"], size=13)
+    box_text(b4, ["Forearm-squeeze IK", "arm pose → wrist points"], size=13)
     arrow(s, xs[0] + bw / 2, y + bh, xs[0] + bw / 2, y2)
-    # orange override path: IK box -> right, under the policy box -> up into the PD box
-    ox = xs[2] + 0.6
+    # orange hand-command path: IK box -> right -> up into the policy box
+    ox = xs[1] + bw / 2
     seg = s.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(xs[0] + bw), Inches(y2 + 0.6), Inches(ox), Inches(y2 + 0.6))
     seg.line.color.rgb = ORANGE
     seg.line.width = Pt(1.75)
     arrow(s, ox, y2 + 0.6, ox, y + bh, color=ORANGE)
-    text(s, xs[1], y2 + 0.68, 4.2, 0.3, "10 arm targets override the policy's arms", size=12, color=ORANGE, bold=True)
+    text(s, xs[0] + bw + 0.1, y2 + 0.68, 4.2, 0.3, "hand_track: wrist targets", size=12, color=ORANGE, bold=True)
     b5 = rect(s, xs[2] + 1.2, y2, bw - 1.2, 1.2, fill=PAPER, line=SOFT)
-    box_text(b5, ["Until trained", "pelvis weld +", "scripted legs"], size=12)
+    box_text(b5, ["Until trained", "weld + scripted", "legs; IK arms"], size=12)
     text(s, 0.67, 5.55, 12.0, 0.7,
          "Navigation is a unicycle: turn in place above 0.35 rad of heading error, otherwise walk or reverse with "
          "heading feedback, then turn to the final yaw. It reverses when the goal is behind and closer than 0.6 m.",
@@ -416,15 +416,15 @@ def build():
         ["Item", "Contract"],
         ["Files", "exports/<name>/ config.yaml + policy.onnx + policy.onnx.data (run dir as exported)"],
         ["Loader", "The TA's LearningRLsim: same observation assembly and action terms as learningrl-sim"],
-        ["Observation", "78: ang vel, gravity, base_velocity, joint pos/vel, last action (+2 phase_clock)"],
-        ["Command fed", "base_velocity = (vx ≤ 0.25 fwd / 0.12 rev, 0, wz ≤ 0.45 rad/s)"],
-        ["Train", "LearningRL-RPO-FlatWalk-v0 (needs reverse + turn); ForwardWalk-v0 cannot"],
-        ["Bring-up", "--assist full (policy legs, pelvis held)  →  unassisted  →  run_eval.py"],
+        ["Observation", "86: ang vel, gravity, base_velocity, joint pos/vel, last action + 8 hand_track"],
+        ["Commands fed", "base_velocity (vx, 0, wz) + hand_track (both wrists, pelvis frame)"],
+        ["Train", "LearningRL-RPO-LocoManipulation-v0, branch student/santabot-rpo-locomanip"],
+        ["Bring-up", "--assist full (policy limbs, pelvis held)  →  unassisted  →  run_eval.py"],
     ]
     table(s, 0.67, 1.6, 12.0, [2.2, 9.8], rows, size=14, header_size=14, row_h=0.52)
     text(s, 0.67, 5.45, 12.0, 0.7,
-         ["Verified today with a stand-in export in the same format (zero-output MLP, 80-dim observation with the",
-          "alternating-gait clock): loads, runs at 50 Hz, completes the mission assisted and stands unassisted."],
+         ["Verified with a stand-in export in the same format (zero-output MLP, 86 inputs): it loads, the hand",
+          "command carries the IK wrist points, and every target stays inside the task's training ranges."],
          size=14, color=MUTED)  # fmt: skip
     footer(s, "python run_trial.py --policy exports/<name>   is the whole integration step.", page)
 
@@ -499,16 +499,16 @@ def build():
     rows = [
         ["Task", "Owner", "Nov 13–19", "Nov 20–22", "Nov 23–29", "Nov 30–Dec 3"],
         ["Controller, scene, evaluation", "Cody", ("Done", {"bold": True}), "", "", ""],
-        ["Train FlatWalk policy (GPU)", "TA", "Request", "Train", "", ""],
+        ["Train locomanip policy (GPU)", "TA", "Request", "Train", "", ""],
         ["Unassisted sim + tuning", "Cody, Sergio", "", "Start", "Work", ""],
-        ["Loaded-walk check / retrain", "Yuki", "", "", "Work", ""],
+        ["Squeeze tuning with policy", "Yuki", "", "", "Work", ""],
         ["Pelvis pose estimate on Origin", "Sergio", "", "Check", "Work", ""],
         ["Supervised hardware trials", "All", "", "", "", "Finish"],
         ["Demo + handoff", "All", "", "", "", ("Due Dec 3", {"bold": True})],
     ]
     table(s, 0.67, 1.5, 7.7, [2.75, 0.85, 1.0, 1.0, 1.0, 1.1], rows, size=11.5, header_size=12, row_h=0.46)
     gaps = [
-        ("Interface gaps", "Arm override is untested on a real\npolicy; carrying load was never trained."),
+        ("Interface gaps", "Training rewards wrist position, not\ngrip force; tune the squeeze inset."),
         ("State estimate", "Sim uses true pelvis pose; hardware\nneeds odometry or external tracking."),
         ("Stop + reset", "Deactivate = zero command, arms\nhome; map to Origin's damping mode."),
     ]

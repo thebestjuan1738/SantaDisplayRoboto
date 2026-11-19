@@ -71,6 +71,11 @@ control:
   # config.yaml (sim_dt, decimation, gains, default pose) always wins.
   sim_dt: 0.005
   decimation: 4            # 50 Hz high-level + policy rate
+  # Who drives the arms. "auto": the policy, when its export observes the
+  # hand_track command (LearningRL-RPO-LocoManipulation-v0) -- the controller
+  # then sends wrist targets instead of joint angles. Otherwise the controller
+  # overrides the arm joints with its IK solution. "override" forces the latter.
+  arm_control: auto
 
 navigation:
   max_forward_mps: 0.25    # within Yuki's flat-walk command range (+/-0.35)
