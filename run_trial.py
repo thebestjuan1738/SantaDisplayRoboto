@@ -31,6 +31,7 @@ def main(argv=None):
     ap.add_argument("--video", action="store_true")
     ap.add_argument("--gif", action="store_true")
     ap.add_argument("--view", default="three_quarter", help="camera: overview, three_quarter, top, grasp_left, grasp_right")
+    ap.add_argument("--follow", action="store_true", help="camera follows the robot (view 'follow' by default)")
     ap.add_argument("--max-time", type=float, default=None)
     ap.add_argument("--perturb", default=None, help='JSON, e.g. {"small_gift": [0.02, -0.01]} (metres)')
     ap.add_argument("--seed", type=int, default=0)
@@ -44,14 +45,15 @@ def main(argv=None):
     trial = SantaTrial(cfg, policy_dir=args.policy, assist=args.assist, perturb=perturb, seed=args.seed)
     tag = datetime.now().strftime("%Y%m%d-%H%M%S")
     out = Path(args.out) if args.out else ROOT / "runs" / tag
-    label = "ASSISTED: pelvis carried, legs scripted -- not a trained policy" if trial.assisted else trial.backend.name
+    label = "ASSISTED: pelvis carried, legs scripted, arms by IK -- not trained" if trial.assisted else trial.backend.name
 
     rec = None
     on_frame = None
     if args.video or args.gif:
         from santabot.render import Recorder
 
-        rec = Recorder(trial.model, view=args.view, label=label)
+        view = "follow" if args.follow and args.view == "three_quarter" else args.view
+        rec = Recorder(trial.model, view=view, label=label, track=args.follow)
         on_frame = rec.on_frame
 
     print(f"SantaBot trial  backend={trial.backend.name}  assisted={trial.assisted}")

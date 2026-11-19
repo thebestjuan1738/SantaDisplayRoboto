@@ -24,7 +24,7 @@ Model used for implementation: Claude Opus 5.5 (Claude Code). Every result below
 
 ## Open items
 
-- **Train `LearningRL-RPO-LocoManipulation-v0`** (TA), then bring it up: `--assist full`, then unassisted, then `run_eval.py`.
+- **`LearningRL-RPO-LocoManipulation-v0` is training** on the TA's GPU (branch `student/cody-rpo-locomanip`); export expected by end of week. Over break: `--assist full`, then unassisted, then `run_eval.py`.
 - **Squeeze strength with a real policy is unknown.** Training rewards wrist position only; tune `squeeze_inset_m` against the measured grip force.
 - **Hardware data needed:**
   - pelvis pose estimate (odometry or external tracking)

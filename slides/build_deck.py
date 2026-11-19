@@ -97,6 +97,11 @@ def title(slide, t):
     text(slide, 0.67, 0.55, 12.0, 0.8, t, size=31.5, font=HEAD, bold=True, wrap=False, name="Title")
 
 
+def area(slide, name):
+    """Small label above the title naming which of the professor's five areas a slide covers."""
+    text(slide, 0.67, 0.2, 9.0, 0.3, name.upper(), size=12, color=BLUE, bold=True, wrap=False)
+
+
 def footer(slide, note, page):
     text(slide, 0.67, 6.62, 11.15, 0.3, note, size=15, color=BLUE, bold=True)
     text(slide, 12.19, 6.98, 0.47, 0.21, str(page), size=12, color=MUTED, align=PP_ALIGN.RIGHT)
@@ -254,10 +259,11 @@ def build():
     r.fill.solid()
     r.fill.fore_color.rgb = ORANGE
     r.line.fill.background()
-    text(s, 0.83, 5.45, 11.46, 0.34, "Cody, Sergio and Yuki  /  Thursday, November 19, 2026  /  locomotion policy not yet trained",
+    text(s, 0.83, 5.45, 11.46, 0.34, "Cody, Sergio and Yuki  /  Thursday, November 19, 2026  /  whole-body policy training now",
          size=17.25, color=SOFT)  # fmt: skip
     notes(s, "Four-minute slot. Lead with the status: the controller, scene and policy hand-off are built and "
-             "evaluated; the whole-body policy itself has not been trained, so every rollout shown is ASSISTED.")  # fmt: skip
+             "evaluated; the whole-body policy is training now (export expected by end of week, tuned over break), so every "
+             "rollout shown is ASSISTED.")  # fmt: skip
 
     # 1b -- the brief (grammar-corrected) -----------------------------------------
     page += 1
@@ -293,14 +299,15 @@ def build():
     page += 1
     s = new_slide(prs)
     title(s, "Where SantaBot stands today")
-    pill(s, 10.35, 0.66, 2.3, "NOT TRAINED YET")
+    area(s, "Status")
+    pill(s, 10.35, 0.66, 2.3, "TRAINING NOW")
     label_rows(
         s,
         [
             ("Built and tested", "Scene, high-level controller, forearm-squeeze IK, ONNX policy adapter,\n"
                                  "evaluation and diagnosis tools. 5/5 unit tests pass."),
-            ("Not yet trained", "The whole-body policy, legs and arms together. Its task is ready on our\n"
-                                "branch of the TA's repo; the GPU run has not happened yet."),
+            ("Training now", "The whole-body policy (legs and arms) is training on the TA's GPU. We\n"
+                             "expect the export by the end of this week, so it can be tuned over break."),
             ("What you will see", "An ASSISTED rollout: a soft weld carries the pelvis along the path the\n"
                                   "controller commands and the legs follow a scripted stepping pattern."),
             ("What is real physics", "Arm PD control, forearm-to-gift contact and friction, gift mass and\n"
@@ -313,69 +320,79 @@ def build():
              "Here the pelvis IS assisted, but the grasp and carry are dynamic. When the policy arrives, the "
              "assist is switched off with one flag.")  # fmt: skip
 
-    # 3 -- animation -----------------------------------------------------------
+    # 3b -- agenda: the professor's five areas -------------------------------------
     page += 1
     s = new_slide(prs)
-    title(s, "The full display, end to end (assisted)")
-    gif = DEMO / "trial.gif"
-    pic = s.shapes.add_picture(str(gif), Inches(0.67), Inches(1.55), width=Inches(8.0))
-    pic.name = "Animation: assisted SantaBot rollout"
-    pic._element.nvPicPr.cNvPr.set("descr", "Animated MuJoCo rollout: the Origin moves both gifts to the mirrored spots.")
-    x = 8.95
-    text(s, x, 1.55, 3.7, 0.36, "Sequence, 100 s of sim time", size=18.75, color=BLUE, bold=True)
-    steps = [
-        "Activate at home",
-        "Approach, raise arms, step in",
-        "Reach, squeeze, lift 4 cm",
-        "Reverse 30 cm, turn, carry",
-        "Step in, lower, release, back off",
-        "Repeat for the 12 in gift",
-        "Return home and deactivate",
+    title(s, "What we're presenting")
+    rows = [["Area", "Slides", "What you'll see"]] + [
+        [(a, {"bold": True}), n, w] for a, n, w in [('Prompting pipeline', '5', 'How Claude Code built and checked the work, and where we steered it'), ('Retargeting and control', '6–8', "The TA's G1 task ported to the Origin; controller; ONNX hand-off"), ('Simulation technical details', '9–10', 'Scene from the brief; model, timing, contacts, actuation'), ('Videos and evaluation', '11–12', 'End-to-end rollout; 5 nominal + 5 variation trials'), ('Diagnosis and Stage 3 readiness', '13–14', 'Two diagnosed failures; hardware gaps and revised plan')]
     ]
-    for i, st in enumerate(steps):
-        yy = 2.05 + i * 0.52
-        c = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(x), Inches(yy), Inches(0.36), Inches(0.36))
-        c.fill.solid()
-        c.fill.fore_color.rgb = INK
-        c.line.fill.background()
-        tf = c.text_frame
-        tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
-        p = tf.paragraphs[0]
-        p.alignment = PP_ALIGN.CENTER
-        r = p.add_run()
-        r.text = str(i + 1)
-        r.font.name, r.font.size, r.font.bold, r.font.color.rgb = BODY, Pt(12), True, WHITE
-        text(s, x + 0.5, yy + 0.03, 3.25, 0.36, st, size=15)
-    footer(s, "Never side-steps: lateral velocity command is 0 at every step. Turns happen in place.", page)
-    notes(s, "The GIF plays automatically in slideshow mode. Full-resolution video: runs/demo-assisted/trial.mp4. "
-             "Point out the reverse-then-turn after each pick, and that the gift is held only by forearm friction.")  # fmt: skip
+    table(s, 0.67, 1.6, 12.0, [3.6, 1.1, 7.3], rows, size=15, header_size=15, row_h=0.62)
+    footer(s, "Organised around the five areas requested for today's progress review.", page)
 
-    # 4 -- scene ---------------------------------------------------------------
+    # 3c -- prompting pipeline ----------------------------------------------------
     page += 1
     s = new_slide(prs)
-    title(s, "Behavior contract and scene")
-    s.shapes.add_picture(str(EVAL / "nominal1_topview.png"), Inches(0.67), Inches(1.75), width=Inches(6.4))
-    rows = [
-        ["Element", "From the brief", "In simulation"],
-        ["Tables", "2 × 60 × 24 in, touching", "End to end, seam x = 0"],
-        ["Height", "Origin waist level", "29.5 in (pelvis 0.75 m)"],
-        ["Gifts", "8 in and 12 in, empty", "0.20 kg and 0.45 kg"],
-        ["Small gift", "6 in from closest side", "6 in from the seam"],
-        ["Large gift", "6 in left of the small", "6 in gap, further left"],
-        ["Home", "1 ft from seam edges", "12 in, facing tables"],
-        ["Success", "Both mirrored, home", "≤ 5 cm, upright"],
+    title(s, "Prompting pipeline: grounded prompts, measured results")
+    area(s, "Prompting pipeline")
+    steps = [
+        ("1  Ground it", "The official brief, the TA's LearningRL repo, the pinned Origin model and the course guide"),
+        ("2  Plan, flag", "Interpretations the brief leaves open (gift depth, reach) flagged for us to confirm"),
+        ("3  Build + run", "Claude Code writes the code, runs MuJoCo and the tests, renders stills to check"),
+        ("4  Measure", "Every claim backed by a run: metrics, plots, one-change before/after experiments"),
+        ("5  Review, steer", "We redirected it to whole-body locomanipulation; a pre-run review caught a crash"),
     ]
-    table(s, 7.3, 1.6, 5.36, [1.15, 2.0, 2.21], rows, size=12, header_size=12.5, row_h=0.5)
-    text(s, 0.67, 4.75, 6.3, 1.0,
-         "To confirm: the brief does not give gift depth. Front faces sit 2 in from the table edge, because at "
-         "6 in the 8 in gift's centre is beyond the Origin's ~0.43 m arm reach.",
+    bw, gap = 2.22, 0.225
+    for k, (head, body) in enumerate(steps):
+        x = 0.67 + k * (bw + gap)
+        b = rect(s, x, 1.7, bw, 2.5)
+        box_text(b, [head, body], size=12.5)
+        b.text_frame.vertical_anchor = MSO_ANCHOR.TOP
+        b.text_frame.margin_top = Inches(0.2)
+        if k < len(steps) - 1:
+            arrow(s, x + bw, 2.95, x + bw + gap, 2.95)
+    label_rows(
+        s,
+        [
+            ("Model", "Claude Opus 5.5 in Claude Code, from planning through implementation."),
+            ("Record", "docs/EXPERIMENT_LOG.md: goal, change, command, observation, decision."),
+        ],
+        y0=4.6,
+        gap=0.15,
+        body_size=16,
+    )
+    footer(s, "Outputs were accepted only with a run behind them; we reviewed plots and frames, not claims.", page)
+    notes(s, "Concrete steering examples: we rejected the walk-only training plan in favour of one locomanipulation "
+             "policy for arms and legs; a code review before Mark's run found that the hand command's class_type "
+             "string would not resolve in Isaac Lab and would have crashed the env build.")  # fmt: skip
+
+    # 4b -- retargeting --------------------------------------------------------------
+    page += 1
+    s = new_slide(prs)
+    title(s, "Retargeting the TA's G1 locomanipulation task to the Origin")
+    area(s, "Retargeting and control")
+    rows = [
+        ["", "TA's G1 task", "Our Origin task (student/cody-rpo-locomanip)"],
+        ["Robot", "Unitree G1, 29 DoF, implicit PD", "RoboParty Origin, 23 DoF, delayed PD (RPO_CFG)"],
+        ["Hand point", "wrist_yaw_link origin", "0.135 m along each forearm: the Origin has no hands"],
+        ["Hand targets", "x 0–0.40, |y| 0–0.45, z 0–0.60 m", "x 0–0.40, |y| 0–0.35, z −0.15–0.35 m"],
+        ["Joint terms", "hip_*, waist_*, wrist_*", "thigh_*, torso_joint, arm_* / elbow_*"],
+        ["Heights", "base 0.78 m, swing foot 0.10 m", "base 0.75 m, swing foot 0.11 m"],
+        ["Load", "none", "+0–0.3 kg on each forearm"],
+        ["Unchanged", "rewards, hand-tracking ramp, PPO, terminations", "same, with the shared swap_in_rpo()"],
+    ]
+    table(s, 0.67, 1.55, 12.0, [1.8, 4.3, 5.9], rows, size=13, header_size=13.5, row_h=0.5)
+    text(s, 0.67, 5.75, 12.0, 0.6,
+         "No motion-capture retargeting is needed: the controller derives wrist targets from the gift geometry, "
+         "and the policy learns to reach them with the Origin's 5-DoF arms while walking.",
          size=14, color=MUTED)  # fmt: skip
-    footer(s, "Every dimension lives in config/santabot.yaml, in inches, as the brief states it.", page)
+    footer(s, "One policy, legs and arms: base_velocity + hand_track in, 23 joint targets out.", page)
 
     # 5 -- architecture --------------------------------------------------------
     page += 1
     s = new_slide(prs)
     title(s, "Controller: one mission layer over one whole-body policy")
+    area(s, "Retargeting and control")
     y, bw, bh = 1.8, 3.0, 1.5
     xs = (0.67, 5.17, 9.67)
     b1 = rect(s, xs[0], y, bw, bh)
@@ -412,6 +429,7 @@ def build():
     page += 1
     s = new_slide(prs)
     title(s, "When the ONNX file arrives: drop in, no code changes")
+    area(s, "Retargeting and control")
     rows = [
         ["Item", "Contract"],
         ["Files", "exports/<name>/ config.yaml + policy.onnx + policy.onnx.data (run dir as exported)"],
@@ -428,33 +446,111 @@ def build():
          size=14, color=MUTED)  # fmt: skip
     footer(s, "python run_trial.py --policy exports/<name>   is the whole integration step.", page)
 
-    # 7 -- physics evidence ----------------------------------------------------
+    # 4 -- scene ---------------------------------------------------------------
     page += 1
     s = new_slide(prs)
-    title(s, "Evidence that the physics is working")
-    rows7 = [
-        ("Robot and scene", ["rpo_description @ 37aac9c (the TA's pin): 23 hinge joints, 33.8 kg,",
-                             "5 ms step. Forearm capsule pads μ 1.2; free gift boxes μ 0.9."]),
-        ("Executed control", ["τ = clip(Kp(q* − q) − Kd q̇), RoboParty RPO_CFG gains, 50 Hz targets.",
-                              "Declared support: the pelvis soft weld (solref 0.02) to the path."]),
-        ("Measured outcome", ["≥ 9.9 N squeeze while carrying; gifts ride 6–7 cm above the table;",
-                              "zero torque saturation and no falls in 10 trials."]),
-    ]  # fmt: skip
-    yy = 1.65
-    for lab, body in rows7:
-        text(s, 0.67, yy, 6.9, 0.36, lab, size=18.75, color=BLUE, bold=True)
-        text(s, 0.67, yy + 0.42, 6.9, 0.75, body, size=15)
-        yy += 1.5
-    s.shapes.add_picture(str(DEMO / "squeeze_closeup.png"), Inches(8.0), Inches(1.6), width=Inches(4.67))
-    text(s, 8.0, 5.2, 4.67, 0.6, "Large gift held by forearm friction alone, t = 60.6 s", size=12, color=MUTED)
-    footer(s, "Traces saved per trial: reference, measured joints, torques, gift poses, grip force (.npz).", page)
+    title(s, "Behavior contract and scene")
+    area(s, "Simulation technical details")
+    s.shapes.add_picture(str(EVAL / "nominal1_topview.png"), Inches(0.67), Inches(1.75), width=Inches(6.4))
+    rows = [
+        ["Element", "From the brief", "In simulation"],
+        ["Tables", "2 × 60 × 24 in, touching", "End to end, seam x = 0"],
+        ["Height", "Origin waist level", "29.5 in (pelvis 0.75 m)"],
+        ["Gifts", "8 in and 12 in, empty", "0.20 kg and 0.45 kg"],
+        ["Small gift", "6 in from closest side", "6 in from the seam"],
+        ["Large gift", "6 in left of the small", "6 in gap, further left"],
+        ["Home", "1 ft from seam edges", "12 in, facing tables"],
+        ["Success", "Both mirrored, home", "≤ 5 cm, upright"],
+    ]
+    table(s, 7.3, 1.6, 5.36, [1.15, 2.0, 2.21], rows, size=12, header_size=12.5, row_h=0.5)
+    text(s, 0.67, 4.75, 6.3, 1.0,
+         "To confirm: the brief does not give gift depth. Front faces sit 2 in from the table edge, because at "
+         "6 in the 8 in gift's centre is beyond the Origin's ~0.43 m arm reach.",
+         size=14, color=MUTED)  # fmt: skip
+    footer(s, "Every dimension lives in config/santabot.yaml, in inches, as the brief states it.", page)
+
+    # 7 -- simulation technical details -------------------------------------------
+    page += 1
+    s = new_slide(prs)
+    title(s, "Simulation technical details")
+    area(s, "Simulation technical details")
+    rows = [
+        ["Item", "Setting"],
+        ["Simulator", "MuJoCo 4.0.1 on CPU; the model the TA's LearningRLsim replays"],
+        ["Robot", "rpo_description @ 37aac9c: 23 hinge joints, 33.8 kg"],
+        ["Timing", "5 ms physics step, 50 Hz control (decimation 4), PGS solver"],
+        ["Contacts", "Elliptic friction cone, impratio 10; forearm pads μ 1.2; gifts μ 0.9"],
+        ["Actuation", "τ = clip(Kp(q* − q) − Kd q̇), RPO_CFG gains, 120 / 27 N·m limits"],
+        ["Objects", "Free gifts 0.20 / 0.45 kg; 29.5 in tables; tree collider"],
+        ["Support", "Declared: pelvis soft weld (solref 0.02) until the policy is in"],
+        ["Logged", "Joints, targets, torques, gift poses, grip force, hand targets"],
+    ]
+    table(s, 0.67, 1.5, 7.55, [1.45, 6.1], rows, size=12, header_size=12.5, row_h=0.5)
+    s.shapes.add_picture(str(DEMO / "squeeze_closeup.png"), Inches(8.45), Inches(1.5), width=Inches(4.2))
+    text(s, 8.45, 4.75, 4.2, 0.9,
+         ["Large gift held by forearm friction alone (t = 60.6 s): ≥ 9.9 N squeeze while carrying, "
+          "zero torque saturation in 10 trials."],
+         size=12.5, color=MUTED)  # fmt: skip
+    footer(s, "One .npz trace per trial, saved beside the video, so every plot can be regenerated.", page)
     notes(s, "Teacher's guide: a fixed base or support fixture must be declared. Ours is the assist weld. "
              "The grasp is not scripted: gifts move only through contact with the forearm pads.")  # fmt: skip
+
+    # 3 -- animation -----------------------------------------------------------
+    page += 1
+    s = new_slide(prs)
+    title(s, "The full display, end to end (assisted)")
+    area(s, "Videos and evaluation")
+    gif = DEMO / "trial.gif"
+    pic = s.shapes.add_picture(str(gif), Inches(0.67), Inches(1.55), width=Inches(8.0))
+    pic.name = "Animation: assisted SantaBot rollout"
+    pic._element.nvPicPr.cNvPr.set(
+        "descr", "Animated MuJoCo rollout: the Origin moves both gifts; green dots mark the wrist targets (hand_track)."
+    )
+    x = 8.95
+    text(s, x, 1.55, 3.7, 0.36, "Sequence, 100 s of sim time", size=18.75, color=BLUE, bold=True)
+    steps = [
+        "Activate at home",
+        "Approach, raise arms, step in",
+        "Reach, squeeze, lift 4 cm",
+        "Reverse 30 cm, turn, carry",
+        "Step in, lower, release, back off",
+        "Repeat for the 12 in gift",
+        "Return home and deactivate",
+    ]
+    for i, st in enumerate(steps):
+        yy = 2.05 + i * 0.52
+        c = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(x), Inches(yy), Inches(0.36), Inches(0.36))
+        c.fill.solid()
+        c.fill.fore_color.rgb = INK
+        c.line.fill.background()
+        tf = c.text_frame
+        tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.CENTER
+        r = p.add_run()
+        r.text = str(i + 1)
+        r.font.name, r.font.size, r.font.bold, r.font.color.rgb = BODY, Pt(12), True, WHITE
+        text(s, x + 0.5, yy + 0.03, 3.25, 0.36, st, size=15)
+    # marker key: the green dots in the animation are the new hand_track command
+    dot = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(x + 0.1), Inches(5.83), Inches(0.18), Inches(0.18))
+    dot.fill.solid()
+    dot.fill.fore_color.rgb = RGBColor(0x1A, 0xD9, 0x41)
+    dot.line.fill.background()
+    text(s, x + 0.5, 5.74, 3.25, 0.7,
+         "Green: wrist targets sent to the policy (hand_track)",
+         size=13, color=MUTED)  # fmt: skip
+    footer(s, "Never side-steps: lateral velocity command is 0 at every step. Turns happen in place.", page)
+    notes(s, "The GIF plays automatically in slideshow mode. Full-resolution video: runs/demo-assisted/trial.mp4. "
+             "Point out the reverse-then-turn after each pick, and that the gift is held only by forearm friction. "
+             "The green dots are the hand_track wrist targets the trained policy will receive; until it is trained, "
+             "the arms are driven to them by IK, so a blue dot (actual wrist) appears only where the wrist is "
+             "held off its target, during the squeeze.")  # fmt: skip
 
     # 8 -- evaluation ------------------------------------------------------------
     page += 1
     s = new_slide(prs)
     title(s, f"Evaluation: {n_ok} of {len(metrics)} assisted trials place both gifts")
+    area(s, "Videos and evaluation")
     rows = [["Trial", "Gift start offset (cm)", "Small err", "Large err", "Carry grip", "Result"]]
     for r in metrics:
         off = r["perturb_cm"].replace('"small_gift": ', "S ").replace('"large_gift": ', "L ").strip("{}") or "nominal"
@@ -476,6 +572,7 @@ def build():
     page += 1
     s = new_slide(prs)
     title(s, "Diagnosis: two failures, one change each")
+    area(s, "Diagnosis and Stage 3 readiness")
     s.shapes.add_picture(str(DIAG / "diagnosis.png"), Inches(1.07), Inches(1.4), width=Inches(11.2))
     y = 5.25
     text(s, 0.67, y, 5.9, 0.36, "E1  Large gift sank through the grip", size=17, color=BLUE, bold=True)
@@ -495,18 +592,19 @@ def build():
     # 10 -- readiness + gantt ------------------------------------------------------
     page += 1
     s = new_slide(prs)
-    title(s, "Deployment readiness and revised plan")
+    title(s, "Stage 3 readiness and revised plan")
+    area(s, "Diagnosis and Stage 3 readiness")
     rows = [
         ["Task", "Owner", "Nov 13–19", "Nov 20–22", "Nov 23–29", "Nov 30–Dec 3"],
         ["Controller, scene, evaluation", "Cody", ("Done", {"bold": True}), "", "", ""],
-        ["Train locomanip policy (GPU)", "TA", "Request", "Train", "", ""],
-        ["Unassisted sim + tuning", "Cody, Sergio", "", "Start", "Work", ""],
-        ["Squeeze tuning with policy", "Yuki", "", "", "Work", ""],
+        ["Train locomanip policy (GPU)", "TA", ("Training", {"bold": True}), "Export EOW", "", ""],
+        ["Unassisted sim + tuning", "Cody, Sergio", "", "Start", "Tune (break)", ""],
+        ["Squeeze tuning with policy", "Yuki", "", "", "Tune (break)", ""],
         ["Pelvis pose estimate on Origin", "Sergio", "", "Check", "Work", ""],
         ["Supervised hardware trials", "All", "", "", "", "Finish"],
         ["Demo + handoff", "All", "", "", "", ("Due Dec 3", {"bold": True})],
     ]
-    table(s, 0.67, 1.5, 7.7, [2.75, 0.85, 1.0, 1.0, 1.0, 1.1], rows, size=11.5, header_size=12, row_h=0.46)
+    table(s, 0.67, 1.5, 7.7, [2.35, 0.95, 1.05, 1.1, 1.15, 1.1], rows, size=11.5, header_size=12, row_h=0.46)
     gaps = [
         ("Interface gaps", "Training rewards wrist position, not\ngrip force; tune the squeeze inset."),
         ("State estimate", "Sim uses true pelvis pose; hardware\nneeds odometry or external tracking."),
@@ -517,7 +615,7 @@ def build():
         text(s, 8.65, yy, 4.0, 0.34, lab, size=16, color=BLUE, bold=True)
         text(s, 8.65, yy + 0.38, 4.0, 0.7, body.split("\n"), size=13)
         yy += 1.35
-    footer(s, "Owners are proposed; confirm in class. Simulation gains need instructor review for hardware.", page)
+    footer(s, "Policy export expected by end of week; tuning runs over break. Gains need instructor review.", page)
 
     prs.save(str(OUT))
     print(f"wrote {OUT}")

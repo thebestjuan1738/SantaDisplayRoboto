@@ -9,7 +9,7 @@ The Roboto Origin (RPO, 23 DoF) runs a holiday display:
 
 A tree stands between the two mirrored spots. The robot walks forward, reverses and turns in place, and **never side-steps**: the lateral velocity command is zero at every step.
 
-> **Status (2026-11-19): no policy has been trained yet.** Every
+> **Status (2026-11-19): the whole-body policy (`LearningRL-RPO-LocoManipulation-v0`) is training on the TA's GPU; the export is expected by the end of the week and will be tuned over break.** Until then, every
 > rollout so far runs in **ASSISTED** mode:
 > - A soft weld carries the pelvis along the path the controller commands, and the legs follow a scripted stepping pattern.
 > - The arms, the squeeze and the gifts are real MuJoCo contact physics.

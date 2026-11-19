@@ -113,6 +113,7 @@ class SantaTrial:
     # ------------------------------------------------------------------
     def reset(self):
         mujoco.mj_resetData(self.model, self.data)
+        self.hands = np.zeros(8)
         hx, hy, hyaw = self.layout.home
         qa = self.view.qa
         z0 = self.cfg["robot"]["spawn_height_m"]
