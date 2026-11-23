@@ -22,6 +22,18 @@ Model used for implementation: Claude Opus 5.5 (Claude Code). Every result below
 | 8 | Train arms and legs in one policy | New task `LearningRL-RPO-LocoManipulation-v0` on branch `student/cody-rpo-locomanip` of the TA's repo: his G1 locomanipulation task with the Origin swapped in; wrist points tracked; Origin-sized target ranges; 0–0.3 kg forearm load | `ruff check . && ruff format --check . && pytest -m static LearningRLlab/tests` | Lint and the TA's static tests pass (9/9). Isaac Lab cannot run on our laptops, so the env has not been built or trained here. | Replaces the earlier plan to train a walk-only policy. |
 | 9 | Policy drives the arms | The adapter feeds `hand_track` (FK wrist points of the controller's arm pose); arms are no longer overridden when the export has it | `pytest -q tests` | 5/5 pass. Over a full mission the wrist targets stay inside the training ranges. | Ready for the real export. |
 
+## 2026-11-23 -- first trained policy (`exports/locomanip_walkv1_7999`)
+
+Mark's `LearningRL-RPO-LocoManipulation-v0` run on the Walk-v1 base (commit `b20dbac`), model_7999. Training-side metrics (his README): 0.22 m/s linear and 0.60 rad/s yaw velocity error, 7 cm hand error, 0.2 % falls.
+
+| # | Goal | Change | Command | Observation | Decision |
+|---|---|---|---|---|---|
+| 10 | Plumbing | none | `run_trial.py --policy exports/locomanip_walkv1_7999 --assist full` | Loads (86 obs / 23 actions). With the pelvis held, the policy's own arms carried both gifts across: small 2.0 cm (tipped), large 6.7 cm. | Interface works end to end. |
+| 11 | First unassisted run | none | `run_trial.py --policy exports/locomanip_walkv1_7999` | Never fell in 180 s, but froze 10 cm short of the first gift: commanded 0.06-0.12 m/s, achieved ~0. | Measure the velocity response. |
+| 12 | Velocity response | new `tools/velocity_sweep.py` (open floor, 6 s holds) | `python tools/velocity_sweep.py exports/locomanip_walkv1_7999` | Dead zone: \|vx\| <= 0.12 m/s -> stands still (its gait rewards treat \|cmd\| <= 0.1 as "stand"). Forward undershoots by ~0.13 m/s (0.25 -> 0.14, 0.40 -> 0.27, 0.60 -> 0.44); reverse -0.30 -> -0.29; yaw ~73 % (0.45 -> 0.33). No falls in 24 tests; raised arms change little. | Calibrate commands. |
+| 13 | Calibrate commands | `navigation.policy_command_map`: [achieved, command] tables from #12; any nonzero wish lifted out of the dead zone | `run_trial.py --policy ...` | Full route walked unassisted, no fall, deactivated at 93 s. No grasp: while the arms reached, the body drifted 26 cm backwards (pelvis-frame wrist targets went with it), grip 0 N. | Hold position while the arms work. |
+| 14 | Hold position | `navigation.station_keeping` (walk back to the arrival spot beyond 4 cm, forward/reverse only); wrist paths anchored to the room while standing | `run_trial.py --policy ...` | **Small gift picked, carried and placed unassisted** (17-20 N, ~10 cm lift), final error 8.7 cm: pushed 6.5 cm while releasing as station-keeping stepped in. Large gift: robot slid 10 cm sideways while squeezing (right-wrist target pushed to y ~ 0, outside its trained range); gripped at 27-37 N but sank 9 cm in the carry (policy stands ~7 cm lower than the assisted model) and hit the far table edge, ending on the floor. | Next: lateral drift during squeeze, more lift for the lower stance, no station-keeping steps during release. |
+
 ## Open items
 
 - **`LearningRL-RPO-LocoManipulation-v0` is training** on the TA's GPU (branch `student/cody-rpo-locomanip`); export expected by end of week. Over break: `--assist full`, then unassisted, then `run_eval.py`.

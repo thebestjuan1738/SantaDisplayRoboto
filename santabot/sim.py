@@ -126,6 +126,7 @@ class SantaTrial:
     def reset(self):
         mujoco.mj_resetData(self.model, self.data)
         self.hands = np.zeros(8)
+        self.vel_sent = np.zeros(3)
         hx, hy, hyaw = self.layout.home
         qa = self.view.qa
         z0 = self.cfg["robot"]["spawn_height_m"]
@@ -142,6 +143,31 @@ class SantaTrial:
         x, y, yaw = self.assist_pose
         self.data.mocap_pos[self.mocap_id] = (x, y, self.cfg["robot"]["spawn_height_m"])
         self.data.mocap_quat[self.mocap_id] = (np.cos(yaw / 2), 0, 0, np.sin(yaw / 2))
+
+    def command_for(self, wanted: np.ndarray) -> np.ndarray:
+        """The base_velocity command to send for the velocity the controller wants.
+
+        Identity in assisted mode or when `navigation.policy_command_map` is off;
+        otherwise each axis is looked up in the measured [achieved, command]
+        table, so a small nonzero wish is lifted out of the policy's dead zone.
+        """
+        cm = self.cfg["navigation"].get("policy_command_map", {})
+        if self.backend.name != "onnx" or not cm.get("enabled", False):
+            return np.asarray(wanted, float).copy()
+
+        def lookup(value, table):
+            if abs(value) < 1e-4:
+                return 0.0
+            pts = np.asarray(table, float)
+            mag = float(np.interp(abs(value), pts[:, 0], pts[:, 1], right=None))
+            if abs(value) > pts[-1, 0]:  # extrapolate along the last segment
+                (a0, c0), (a1, c1) = pts[-2], pts[-1]
+                mag = c1 + (abs(value) - a1) * (c1 - c0) / (a1 - a0)
+            return float(np.sign(value) * min(mag, 1.0))
+
+        vx, vy, wz = wanted
+        vx_cmd = lookup(vx, cm["forward"] if vx >= 0 else cm["reverse"])
+        return np.array([vx_cmd, 0.0, lookup(wz, cm["yaw"])])
 
     def hand_command(self, arm_q: np.ndarray) -> np.ndarray:
         """hand_track for an IK arm pose (joint-space planning only, e.g. a policy
@@ -204,7 +230,8 @@ class SantaTrial:
                 res.phases.append((round(t, 2), cmd.phase))
                 last_phase = cmd.phase
             self.hands = cmd.hands if cmd.hands is not None else self.hand_command(cmd.arm_q)
-            q_target = self.backend.targets(cmd.velocity, t, self.hands)
+            self.vel_sent = self.command_for(cmd.velocity)
+            q_target = self.backend.targets(self.vel_sent, t, self.hands)
             kp_now = kp.copy()
             if not self.arms_by_policy:
                 q_target[self.arm_idx] = cmd.arm_q[self.arm_idx]
@@ -300,6 +327,7 @@ class SantaTrial:
         L["phase"].append(cmd.phase)
         L["pose"].append(pose)
         L["cmd"].append(cmd.velocity)
+        L["cmd_sent"].append(self.vel_sent.copy())
         L["q"].append(self.data.qpos[self.jmap.qpos].copy())
         L["q_target"].append(q_target.copy())
         L["tau"].append(self.data.ctrl[self.jmap.act].copy())
@@ -333,5 +361,5 @@ class SantaTrial:
 
 LOG_KEYS = (
     "t", "phase", "pose", "cmd", "q", "q_target", "tau", "gift_pos",
-    "grip_force", "holding", "ik_err", "assist_err", "hands", "hand_err",
+    "grip_force", "holding", "ik_err", "assist_err", "hands", "hand_err", "cmd_sent",
 )  # fmt: skip

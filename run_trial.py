@@ -45,7 +45,12 @@ def main(argv=None):
     trial = SantaTrial(cfg, policy_dir=args.policy, assist=args.assist, perturb=perturb, seed=args.seed)
     tag = datetime.now().strftime("%Y%m%d-%H%M%S")
     out = Path(args.out) if args.out else ROOT / "runs" / tag
-    label = "ASSISTED: pelvis carried, legs scripted, arms by IK -- not trained" if trial.assisted else trial.backend.name
+    if args.policy and not trial.assisted:
+        label = f"TRAINED POLICY ({Path(args.policy).name}) -- no assistance"
+    elif args.policy:
+        label = f"TRAINED POLICY ({Path(args.policy).name}) -- pelvis assisted"
+    else:
+        label = "ASSISTED: pelvis carried, legs scripted, arms by IK -- not trained"
 
     rec = None
     on_frame = None

@@ -82,8 +82,8 @@ class Hold(Primitive):
         self.seconds, self.label = seconds, label
 
     def update(self, c, ctl):
-        ctl.set_velocity(0.0, 0.0, c)
-        return c.t - self.t0 >= self.seconds and ctl.stopped()
+        ctl.station_keep(c)
+        return c.t - self.t0 >= self.seconds and (ctl.stopped() or ctl.station_active)
 
 
 class GoTo(Primitive):
@@ -102,6 +102,7 @@ class GoTo(Primitive):
 
     def start(self, c, ctl):
         super().start(c, ctl)
+        ctl.hold_pose = None  # moving on: nothing to keep station on until it arrives
         d = self.goal - c.pose[:2]
         self.reverse = False
         if self.direction == "reverse":
@@ -138,13 +139,19 @@ class GoTo(Primitive):
                 return False
         if self.yaw is None:
             ctl.set_velocity(0.0, 0.0, c)
-            return ctl.stopped()
+            if ctl.stopped():
+                ctl.hold_pose = np.array([self.goal[0], self.goal[1], yaw])
+                return True
+            return False
         e = wrap(self.yaw - yaw)
         if abs(e) > n["yaw_tolerance_rad"]:
             ctl.set_velocity(0.0, n["k_heading"] * e, c)
             return False
         ctl.set_velocity(0.0, 0.0, c)
-        return ctl.stopped()
+        if ctl.stopped():
+            ctl.hold_pose = np.array([self.goal[0], self.goal[1], self.yaw])
+            return True
+        return False
 
 
 class ArmMove(Primitive):
@@ -156,21 +163,30 @@ class ArmMove(Primitive):
     to the policy's own default.
     """
 
-    def __init__(self, target, seconds, label, home=False):
+    def __init__(self, target, seconds, label, home=False, anchor="world"):
+        """`anchor` (wrist space only): "world" ties the wrist path to the room, so
+        the wrists keep reaching for the gift if the body sways while standing;
+        "body" keeps it relative to the pelvis (poses carried while walking)."""
         self.target_fn, self.seconds, self.label = target, seconds, label
         self.home = home
+        self.anchor = "body" if home else anchor
 
     def start(self, c, ctl):
         super().start(c, ctl)
         self.x0 = ctl.arm_state()
         self.x1 = self.target_fn(c, ctl)
+        self.world = ctl.wrist_space and self.anchor == "world"
+        if self.world:
+            self.x0 = ctl.wrists_to_world(self.x0, c.pose)
+            self.x1 = ctl.wrists_to_world(self.x1, c.pose)
         if ctl.wrist_space and not self.home:
             ctl.hands_active = True
 
     def update(self, c, ctl):
-        ctl.set_velocity(0.0, 0.0, c)
+        ctl.station_keep(c)
         s = min_jerk((c.t - self.t0) / self.seconds)
-        ctl.set_arm_state(self.x0 + s * (self.x1 - self.x0))
+        x = self.x0 + s * (self.x1 - self.x0)
+        ctl.set_arm_state(ctl.wrists_to_pelvis(x, c.pose) if self.world else x)
         if s >= 1.0 and self.home:
             ctl.hands_active = False
         return s >= 1.0
@@ -218,6 +234,8 @@ class MissionController:
         self.home_wrists = None if home_wrists is None else np.asarray(home_wrists, float).copy()
         self.wrists = None if home_wrists is None else self.home_wrists.copy()
         self.hands_active = False
+        self.hold_pose: np.ndarray | None = None  # (x, y, yaw) to keep station on while the arms work
+        self.station_active = False
         self.cfg = cfg
         self.nav = cfg["navigation"]
         self.man = cfg["manipulation"]
@@ -271,6 +289,45 @@ class MissionController:
         if not self.hands_active:
             return np.zeros(8)
         return np.concatenate([[1.0, 1.0], self.wrists])
+
+    def station_keep(self, c: Ctx) -> None:
+        """Stand still at `hold_pose`, stepping back to it if the body drifts.
+
+        A trained policy can give ground while the arms reach forward. Forward/
+        backward error beyond `start_m` (or heading error beyond `yaw_start_rad`)
+        is walked back out -- never sideways -- until it is under `stop_m`.
+        """
+        sk = self.nav.get("station_keeping", {})
+        if not sk.get("enabled", False) or self.hold_pose is None:
+            self.station_active = False
+            self.set_velocity(0.0, 0.0, c)
+            return
+        x, y, _, yaw = c.pose
+        gx, gy, gyaw = self.hold_pose
+        along = (gx - x) * np.cos(yaw) + (gy - y) * np.sin(yaw)
+        e_yaw = wrap(gyaw - yaw)
+        threshold = sk["stop_m"] if self.station_active else sk["start_m"]
+        yaw_threshold = sk["yaw_stop_rad"] if self.station_active else sk["yaw_start_rad"]
+        move = abs(along) > threshold
+        turn = abs(e_yaw) > yaw_threshold
+        self.station_active = move or turn
+        vx = float(np.clip(self.nav["k_distance"] * along, -sk["max_mps"], sk["max_mps"])) if move else 0.0
+        wz = self.nav["k_heading"] * e_yaw if turn else 0.0
+        self.set_velocity(vx, wz, c)
+
+    def wrists_to_world(self, w: np.ndarray, pose: np.ndarray) -> np.ndarray:
+        """Two wrist points (6), yaw-aligned pelvis frame -> world."""
+        x, y, z, yaw = pose
+        cy, sy = np.cos(yaw), np.sin(yaw)
+        out = np.empty(6)
+        for k in (0, 3):
+            px, py, pz = w[k : k + 3]
+            out[k : k + 3] = (x + cy * px - sy * py, y + sy * px + cy * py, z + pz)
+        return out
+
+    def wrists_to_pelvis(self, w: np.ndarray, pose: np.ndarray) -> np.ndarray:
+        """Two wrist points (6), world -> yaw-aligned pelvis frame."""
+        return np.concatenate([self.to_pelvis(w[k : k + 3], pose) for k in (0, 3)])
 
     def to_pelvis(self, p_world: np.ndarray, pose: np.ndarray) -> np.ndarray:
         x, y, z, yaw = pose
@@ -333,7 +390,9 @@ class MissionController:
             name = g.name
             plan += [
                 GoTo(g.start[0], -app, face, label=f"approach {name}"),
-                ArmMove(self._arm_pose(g, "start", open_gap, dx=back, at_stand=True), T, f"ready arms {name}"),
+                ArmMove(
+                    self._arm_pose(g, "start", open_gap, dx=back, at_stand=True), T, f"ready arms {name}", anchor="body"
+                ),
                 GoTo(g.start[0], -stand, face, direction="forward", label=f"step in {name}", speed=0.5),
                 ArmMove(self._arm_pose(g, "start", open_gap), T, f"reach {name}"),
                 ArmMove(self._arm_pose(g, "start", grip_gap), m["squeeze_time_s"], f"squeeze {name}"),

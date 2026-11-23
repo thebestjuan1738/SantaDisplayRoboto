@@ -91,6 +91,30 @@ navigation:
   approach_distance_m: 0.40   # pelvis-to-table-edge where it stops before stepping in
   grasp_standoff_m: 0.11      # pelvis centre to table edge when grasping (hull front is +0.054)
   back_off_m: 0.30            # reverse distance after a pick or place
+  # While the arms work the robot should stand still; a trained policy can give
+  # ground (locomanip_walkv1_7999 drifted 26 cm back while reaching). Beyond
+  # start_m (or yaw_start_rad) it walks back to the spot it arrived at, forward
+  # or reverse only, until under stop_m / yaw_stop_rad.
+  station_keeping:
+    enabled: true
+    start_m: 0.04
+    stop_m: 0.015
+    yaw_start_rad: 0.08
+    yaw_stop_rad: 0.03
+    max_mps: 0.10
+  # Command calibration for a trained policy: the controller decides the speed it
+  # WANTS, and this table gives the command that produces it. Pairs are
+  # [achieved, command], measured open-floor with tools/velocity_sweep.py on
+  # exports/locomanip_walkv1_7999 (2026-11-23). That policy stands still for
+  # any command of size <= ~0.12 (its gait rewards treat |cmd| <= 0.1 as "stand")
+  # and undershoots forward speed by ~0.13 m/s and yaw rate by ~27 %. Any
+  # nonzero wish is raised past the dead zone. Not used in assisted mode.
+  # Re-measure for every new export.
+  policy_command_map:
+    enabled: true
+    forward: [[0.0, 0.16], [0.07, 0.17], [0.14, 0.25], [0.27, 0.40], [0.44, 0.60]]
+    reverse: [[0.0, 0.17], [0.29, 0.30]]
+    yaw:     [[0.0, 0.16], [0.18, 0.25], [0.33, 0.45], [0.58, 0.80]]
 
 manipulation:
   # Wrists are commanded slightly INSIDE the gift faces; the resulting PD error
