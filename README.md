@@ -181,6 +181,8 @@ run_trial.py run_eval.py one trial / Stage-2 evaluation
 tools/                   fetch_assets, make_test_export (stand-in ONNX), diagnose
 slides/                  Stage 2 deck (built from the course template)
 docs/EXPERIMENT_LOG.md   dated record of every change and its measured effect
+videos/                  committed video log: YYYY-MM-DD_HHMM_<description>.mp4 + index (see CLAUDE.md)
+CLAUDE.md                working rules for the team and their Claude sessions
 tests/                   pytest
 ```
 

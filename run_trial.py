@@ -6,6 +6,8 @@
   python run_trial.py --policy exports/walk   # a trained export, unassisted
   python run_trial.py --policy exports/walk --assist full   # policy legs, pelvis held (bring-up)
   python run_trial.py --config my_tuning.yaml # try a tuned copy of config/santabot.yaml
+  python run_trial.py --policy exports/x --video --follow --save-video "short description"
+                                              # also copy the video into videos/ (committed log)
 
 A policy directory is what the TA's LearningRL play/export step writes:
 config.yaml + policy.onnx + policy.onnx.data.
@@ -36,7 +38,15 @@ def main(argv=None):
     ap.add_argument("--perturb", default=None, help='JSON, e.g. {"small_gift": [0.02, -0.01]} (metres)')
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default=None, help="output directory (default runs/<timestamp>)")
+    ap.add_argument(
+        "--save-video",
+        metavar="DESCRIPTION",
+        default=None,
+        help="copy the video into videos/YYYY-MM-DD_HHMM_<description>.mp4 and log it (implies --video)",
+    )
     args = ap.parse_args(argv)
+    if args.save_video:
+        args.video = True
 
     from santabot.sim import SantaTrial
 
@@ -96,6 +106,15 @@ def main(argv=None):
         print(f"  {name:11s} placed={g['placed']!s:5s}  xy error {g['xy_error_m'] * 100:5.1f} cm  {g['why']}")
     if res.first_failure:
         print(f"  first failure: {res.first_failure}")
+    if args.save_video:
+        from santabot.videos import save_video
+
+        if args.policy:
+            mode = f"policy {Path(args.policy).name}, " + ("pelvis assisted" if trial.assisted else "unassisted")
+        else:
+            mode = "assisted (no policy)"
+        dest = save_video(out / "trial.mp4", args.save_video, mode, res.to_dict())
+        print(f"saved to video log: {dest.relative_to(ROOT)}")
     print(f"outputs: {out}")
     return 0 if res.success else 2
 
