@@ -28,8 +28,10 @@ scene:
     - name: large_gift
       size_in: 12.0
       mass_kg: 0.45
-      # 6 in to the LEFT of the small gift (gap between their faces).
-      gap_left_of_previous_in: 6.0
+      # To the LEFT of the small gift, this gap between their faces. The brief
+      # says 6 in; the team widened it to 9 in (2026-11-23) to make room for the
+      # tree between the two placed gifts.
+      gap_left_of_previous_in: 9.0
   # Front face of each gift, measured from the table's front edge. The brief
   # does not fix this. 2 in keeps both gifts inside the Origin's ~0.43 m
   # shoulder-to-wrist reach; at 6 in the 8 in gift's centre is out of reach
@@ -40,7 +42,10 @@ scene:
     # 1 ft from the touching edges, on the seam line, facing the tables.
     distance_from_edge_in: 12.0
   tree:
-    # Between the two mirrored small-gift spots (on the seam), toward the back.
+    # On the destination table, centred in the gap between where the small and
+    # large gifts are placed (x is computed from the gift goals), at this depth
+    # from the front edge -- behind the gifts, clear of the robot's forearms --
+    # so the gifts end up arranged under the tree.
     y_in: 17.0
     base_radius_in: 5.0
     height_in: 30.0
@@ -126,6 +131,9 @@ manipulation:
   grasp_depth_frac: 0.55      # wrist this far along the gift depth (0 = front face)
   ready_pullback_m: 0.12      # how far behind the grasp line the wrists wait
   lift_m: 0.07                # commanded; PD sag under load leaves ~4 cm actual
+  # Extra lift when a trained policy drives the arms: locomanip_walkv1_7999
+  # stands ~7 cm lower and the large gift sank ~9 cm while carried (log #14).
+  policy_extra_lift_m: 0.05
   carry_pullin_m: 0.03
   place_drop_m: 0.006         # release this far above the table contact
   move_time_s: 1.2            # default duration of one arm move (min-jerk)

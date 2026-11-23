@@ -458,7 +458,7 @@ def build():
         ["Height", "Origin waist level", "29.5 in (pelvis 0.75 m)"],
         ["Gifts", "8 in and 12 in, empty", "0.20 kg and 0.45 kg"],
         ["Small gift", "6 in from closest side", "6 in from the seam"],
-        ["Large gift", "6 in left of the small", "6 in gap, further left"],
+        ["Large gift", "6 in left of the small", "9 in gap (team choice)"],
         ["Home", "1 ft from seam edges", "12 in, facing tables"],
         ["Success", "Both mirrored, home", "≤ 5 cm, upright"],
     ]

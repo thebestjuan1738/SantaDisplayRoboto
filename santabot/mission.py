@@ -383,6 +383,8 @@ class MissionController:
         app, stand = n["approach_distance_m"], n["grasp_standoff_m"]
         T = m["move_time_s"]
         plan: list[Primitive] = [Hold(1.0, "activate")]
+        # a trained policy crouches and its wrists sag under load: lift higher so gifts clear the tables
+        lift = m["lift_m"] + (m.get("policy_extra_lift_m", 0.0) if self.wrist_space else 0.0)
         for g in lay.gifts:
             open_gap = g.size / 2 + pad_r + m["open_clearance_m"]
             grip_gap = g.size / 2 + pad_r - m["squeeze_inset_m"]
@@ -399,7 +401,7 @@ class MissionController:
                 SetHolding(name),
                 Hold(m["settle_time_s"], f"settle {name}"),
                 ArmMove(
-                    self._arm_pose(g, "start", grip_gap, dx=-m["carry_pullin_m"], dz=m["lift_m"]),
+                    self._arm_pose(g, "start", grip_gap, dx=-m["carry_pullin_m"], dz=lift),
                     T,
                     f"lift {name}",
                 ),

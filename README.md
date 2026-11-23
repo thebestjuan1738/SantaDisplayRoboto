@@ -113,11 +113,11 @@ Everything is in `config/santabot.yaml`, in inches where the brief gave inches.
 | Table height at the Origin's waist | 29.5" (0.749 m). The pelvis stands at 0.75 m, and its hull spans 0.66–0.82 m. |
 | 8", 8", 8" and 12", 12", 12" empty gifts | Cubes of 0.20 kg and 0.45 kg. **Measure the real boxes.** |
 | Small gift 6" from the closest side | The small gift's seam-side face is 6" from the seam, the table side nearest home. |
-| Large gift 6" to the left of the small one | 6" gap between their faces, further from the seam. |
+| Large gift 6" to the left of the small one | **9" gap** between their faces, further from the seam (team choice, 2026-11-23, to fit the tree between the placed gifts). |
 | Gift depth on the table | Not given. Front faces sit **2" from the front edge** (see the reach check). |
 | Mirrored spots | Each gift's spot reflected across the seam. |
 | Home 1 ft from the touching edges | Pelvis 12" in front of the seam, facing the tables. |
-| Tree between the mirrored spots | On the seam, 17" back from the front edge. |
+| Tree between the mirrored spots | On the destination table, centred between where the small and large gifts are placed (18.5" from the seam), 17" back from the front edge, so the gifts end up under the tree. |
 | No end effectors: squeeze between the wrists | A capsule pad on each forearm. The wrists are commanded 2.5 cm *inside* the gift faces, and the elbows are 2 cm wider than the wrists (toe-in). The PD error is the squeeze. |
 
 **Reach check.**

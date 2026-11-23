@@ -26,15 +26,21 @@ def test_layout_matches_brief(cfg):
     assert small.size == pytest.approx(8 * IN) and large.size == pytest.approx(12 * IN)
     # small gift's seam-side face 6 in from the seam (x = 0)
     assert small.start[0] + small.size / 2 == pytest.approx(-6 * IN)
-    # large gift 6 in to the left (-x) of the small one
+    # large gift to the left (-x) of the small one, by the configured gap (brief: 6 in; team: 9 in)
     gap = (small.start[0] - small.size / 2) - (large.start[0] + large.size / 2)
-    assert gap == pytest.approx(6 * IN)
+    assert gap == pytest.approx(cfg["scene"]["gifts"][1]["gap_left_of_previous_in"] * IN)
     # goals mirror the starts across the seam, on the other table
     for g in lay.gifts:
         assert g.goal[0] == pytest.approx(-g.start[0]) and g.goal[1:] == pytest.approx(g.start[1:])
     # home 1 ft from the touching edges, facing the tables
     assert lay.home[1] == pytest.approx(-12 * IN) and lay.home[0] == 0.0
-    assert lay.tree_pos[0] == 0.0  # between the mirrored small-gift spots
+    # tree on the destination table, centred between the placed small and large gifts, behind them
+    small_far, large_near = small.goal[0] + small.size / 2, large.goal[0] - large.size / 2
+    assert lay.tree_pos[0] == pytest.approx((small_far + large_near) / 2)
+    # its footprint clears every placed gift's footprint
+    for g in lay.gifts:
+        nearest = np.clip(lay.tree_pos[:2], g.goal[:2] - g.size / 2, g.goal[:2] + g.size / 2)
+        assert np.linalg.norm(lay.tree_pos[:2] - nearest) > lay.tree_radius, g.name
     assert lay.table_length == pytest.approx(60 * IN) and lay.table_depth == pytest.approx(24 * IN)
 
 

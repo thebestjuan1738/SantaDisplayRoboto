@@ -80,6 +80,10 @@ def build_layout(cfg: dict, perturb: dict | None = None) -> Layout:
 
     home_d = s["home"]["distance_from_edge_in"] * IN
     tr = s["tree"]
+    # tree x: middle of the gap between the first two gifts' destinations
+    g0, g1 = gifts[0], gifts[1]
+    inner = sorted([(g0.goal[0], g0.size), (g1.goal[0], g1.size)])
+    tree_x = 0.5 * ((inner[0][0] + inner[0][1] / 2) + (inner[1][0] - inner[1][1] / 2))
     return Layout(
         table_length=L,
         table_depth=D,
@@ -90,7 +94,7 @@ def build_layout(cfg: dict, perturb: dict | None = None) -> Layout:
         right_table_center=np.array([L / 2, D / 2]),
         gifts=tuple(gifts),
         home=np.array([0.0, -home_d, np.pi / 2]),
-        tree_pos=np.array([0.0, tr["y_in"] * IN, H]),
+        tree_pos=np.array([tree_x, tr["y_in"] * IN, H]),
         tree_radius=tr["base_radius_in"] * IN,
         tree_height=tr["height_in"] * IN,
     )
