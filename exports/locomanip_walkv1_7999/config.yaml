@@ -1,0 +1,385 @@
+policy_frequency_hz: 50.0
+sim_frequency_hz: 200.0
+sim_dt: 0.005
+decimation: 4
+robot: roboparty_rpo
+task: LearningRL-RPO-LocoManipulation-v0-PLAY
+run:
+  name: 2026-11-21_04-26-05_mh_rpo-locomanip-walkv1-b20dbac
+  wandb_id: null
+  checkpoint: model_7999.pt
+observations:
+  total_dim: 86
+  terms:
+  - name: base_ang_vel
+    func: base_ang_vel
+    dim: 3
+    slice: [0, 3]
+    scale: 0.2
+    clip: null
+  - name: projected_gravity
+    func: projected_gravity
+    dim: 3
+    slice: [3, 6]
+    scale: 1.0
+    clip: null
+  - name: velocity_commands
+    func: generated_commands
+    dim: 3
+    slice: [6, 9]
+    scale: 1.0
+    clip: null
+    params:
+      command_name: base_velocity
+  - name: joint_pos_rel
+    func: joint_pos_rel
+    dim: 23
+    slice: [9, 32]
+    scale: 1.0
+    clip: null
+  - name: joint_vel_rel
+    func: joint_vel_rel
+    dim: 23
+    slice: [32, 55]
+    scale: 0.05
+    clip: null
+  - name: last_action
+    func: last_action
+    dim: 23
+    slice: [55, 78]
+    scale: 1.0
+    clip: null
+  - name: hand_track
+    func: generated_commands
+    dim: 8
+    slice: [78, 86]
+    scale: 1.0
+    clip: null
+    params:
+      command_name: hand_track
+commands:
+- name: base_velocity
+  type: UniformVelocityCommandCfg
+  obs_slice: [6, 9]
+  ranges:
+    lin_vel_x: [-1.0, 1.0]
+    lin_vel_y: [-1.0, 1.0]
+    ang_vel_z: [-1.0, 1.0]
+    heading: null
+  heading_command: false
+  rel_standing_envs: 0.1
+  resampling_time_range: [10.0, 10.0]
+- name: hand_track
+  type: HandPosCommandCfg
+  obs_slice: [78, 86]
+  ranges:
+    pos_x: [0.0, 0.4]
+    pos_y: [-0.35, 0.35]
+    pos_y_left: [0.0, 0.35]
+    pos_y_right: [-0.35, 0.0]
+    pos_z: [-0.15, 0.35]
+  rel_standing_envs: 0.1
+  resampling_time_range: [0.5, 2.0]
+actions:
+  total_dim: 23
+  terms:
+  - name: JointPositionAction
+    type: JointPositionAction
+    dim: 23
+    slice: [0, 23]
+    joint_names:
+    - left_thigh_yaw_joint
+    - left_thigh_roll_joint
+    - left_thigh_pitch_joint
+    - left_knee_joint
+    - left_ankle_pitch_joint
+    - left_ankle_roll_joint
+    - right_thigh_yaw_joint
+    - right_thigh_roll_joint
+    - right_thigh_pitch_joint
+    - right_knee_joint
+    - right_ankle_pitch_joint
+    - right_ankle_roll_joint
+    - torso_joint
+    - left_arm_pitch_joint
+    - left_arm_roll_joint
+    - left_arm_yaw_joint
+    - left_elbow_pitch_joint
+    - left_elbow_yaw_joint
+    - right_arm_pitch_joint
+    - right_arm_roll_joint
+    - right_arm_yaw_joint
+    - right_elbow_pitch_joint
+    - right_elbow_yaw_joint
+    scale: 0.25
+    offset:
+    - 0.0
+    - 0.0
+    - -0.1
+    - 0.30000001
+    - -0.2
+    - 0.0
+    - 0.0
+    - 0.0
+    - -0.1
+    - 0.30000001
+    - -0.2
+    - 0.0
+    - 0.0
+    - 0.18000001
+    - 0.06
+    - 0.0
+    - 0.77999997
+    - 0.0
+    - 0.18000001
+    - -0.06
+    - 0.0
+    - 0.77999997
+    - 0.0
+    clip:
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, 10.0]
+default_joint_pos:
+  joint_order:
+  - left_thigh_yaw_joint
+  - left_thigh_roll_joint
+  - left_thigh_pitch_joint
+  - left_knee_joint
+  - left_ankle_pitch_joint
+  - left_ankle_roll_joint
+  - right_thigh_yaw_joint
+  - right_thigh_roll_joint
+  - right_thigh_pitch_joint
+  - right_knee_joint
+  - right_ankle_pitch_joint
+  - right_ankle_roll_joint
+  - torso_joint
+  - left_arm_pitch_joint
+  - left_arm_roll_joint
+  - left_arm_yaw_joint
+  - left_elbow_pitch_joint
+  - left_elbow_yaw_joint
+  - right_arm_pitch_joint
+  - right_arm_roll_joint
+  - right_arm_yaw_joint
+  - right_elbow_pitch_joint
+  - right_elbow_yaw_joint
+  values:
+  - 0.0
+  - 0.0
+  - -0.1
+  - 0.30000001
+  - -0.2
+  - 0.0
+  - 0.0
+  - 0.0
+  - -0.1
+  - 0.30000001
+  - -0.2
+  - 0.0
+  - 0.0
+  - 0.18000001
+  - 0.06
+  - 0.0
+  - 0.77999997
+  - 0.0
+  - 0.18000001
+  - -0.06
+  - 0.0
+  - 0.77999997
+  - 0.0
+init_state:
+  pos:
+  - 0.0
+  - 0.0
+  - 0.75
+actuators:
+  joint_order:
+  - left_thigh_yaw_joint
+  - left_thigh_roll_joint
+  - left_thigh_pitch_joint
+  - left_knee_joint
+  - left_ankle_pitch_joint
+  - left_ankle_roll_joint
+  - right_thigh_yaw_joint
+  - right_thigh_roll_joint
+  - right_thigh_pitch_joint
+  - right_knee_joint
+  - right_ankle_pitch_joint
+  - right_ankle_roll_joint
+  - torso_joint
+  - left_arm_pitch_joint
+  - left_arm_roll_joint
+  - left_arm_yaw_joint
+  - left_elbow_pitch_joint
+  - left_elbow_yaw_joint
+  - right_arm_pitch_joint
+  - right_arm_roll_joint
+  - right_arm_yaw_joint
+  - right_elbow_pitch_joint
+  - right_elbow_yaw_joint
+  stiffness:
+  - 100.0
+  - 100.0
+  - 100.0
+  - 150.0
+  - 40.0
+  - 40.0
+  - 100.0
+  - 100.0
+  - 100.0
+  - 150.0
+  - 40.0
+  - 40.0
+  - 150.0
+  - 40.0
+  - 40.0
+  - 40.0
+  - 30.0
+  - 20.0
+  - 40.0
+  - 40.0
+  - 40.0
+  - 30.0
+  - 20.0
+  damping:
+  - 3.3
+  - 3.3
+  - 3.3
+  - 5.0
+  - 2.0
+  - 2.0
+  - 3.3
+  - 3.3
+  - 3.3
+  - 5.0
+  - 2.0
+  - 2.0
+  - 5.0
+  - 2.0
+  - 2.0
+  - 2.0
+  - 1.5
+  - 1.0
+  - 2.0
+  - 2.0
+  - 2.0
+  - 1.5
+  - 1.0
+  armature:
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  - 0.01
+  friction:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  effort_limit:
+  - 120.0
+  - 120.0
+  - 120.0
+  - 120.0
+  - 27.0
+  - 27.0
+  - 120.0
+  - 120.0
+  - 120.0
+  - 120.0
+  - 27.0
+  - 27.0
+  - 120.0
+  - 27.0
+  - 27.0
+  - 27.0
+  - 27.0
+  - 27.0
+  - 27.0
+  - 27.0
+  - 27.0
+  - 27.0
+  - 27.0
+  velocity_limit:
+  - 25.0
+  - 25.0
+  - 25.0
+  - 25.0
+  - 8.0
+  - 8.0
+  - 25.0
+  - 25.0
+  - 25.0
+  - 25.0
+  - 8.0
+  - 8.0
+  - 25.0
+  - 8.0
+  - 8.0
+  - 8.0
+  - 8.0
+  - 8.0
+  - 8.0
+  - 8.0
+  - 8.0
+  - 8.0
+  - 8.0
