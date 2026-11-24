@@ -3,8 +3,9 @@
 A sequence of primitives, each of which runs until done:
 
   GoTo   -- unicycle navigation: turn in place, walk forward OR reverse, turn
-            to a final heading. The lateral velocity command is always 0, so
-            the robot never side-steps.
+            to a final heading. Travel never side-steps (no carrying a gift
+            sideways to the other table); `align=True` moves -- stepping in to
+            a table -- may add a small sideways correction to line up.
   ArmMove-- a min-jerk move of both arms to a target computed from the gift
             geometry in the pelvis frame when the move starts.
   Hold   -- stand still.
@@ -93,12 +94,16 @@ class GoTo(Primitive):
     behind and close, which is how a person backs away from a table).
     """
 
-    def __init__(self, x, y, yaw=None, direction="auto", label="walk", speed=1.0):
+    def __init__(self, x, y, yaw=None, direction="auto", label="walk", speed=1.0, align=False):
+        """`align`: a short final approach (stepping in to a table). The robot keeps
+        facing `yaw` and corrects sideways drift with a small lateral velocity
+        instead of steering, so it arrives square to the gift."""
         self.goal = np.array([x, y], dtype=float)
         self.yaw = yaw
         self.direction = direction
         self.label = label
         self.speed = speed
+        self.align = align and yaw is not None
 
     def start(self, c, ctl):
         super().start(c, ctl)
@@ -121,6 +126,18 @@ class GoTo(Primitive):
         if not self.arrived:
             if dist < n["pos_tolerance_m"]:
                 self.arrived = True
+            elif self.align:
+                # square-on approach: hold the final heading, close the forward gap,
+                # correct the sideways offset with a small lateral velocity
+                along = d[0] * np.cos(yaw) + d[1] * np.sin(yaw)
+                lat = -d[0] * np.sin(yaw) + d[1] * np.cos(yaw)
+                vmax = (n["max_reverse_mps"] if along < 0 else n["max_forward_mps"]) * self.speed
+                v = float(np.clip(n["k_distance"] * along, -vmax, vmax))
+                if abs(along) > n["pos_tolerance_m"]:
+                    v += float(np.sign(along)) * 0.03
+                vy = n["k_lateral"] * lat if abs(lat) > n["pos_tolerance_m"] / 2 else 0.0
+                ctl.set_velocity(v, n["k_heading"] * wrap(self.yaw - yaw), c, vy=vy)
+                return False
             else:
                 desired = np.arctan2(d[1], d[0]) + (np.pi if self.reverse else 0.0)
                 if dist < 0.10:  # do not chase the bearing in the last few cm
@@ -184,6 +201,11 @@ class ArmMove(Primitive):
 
     def update(self, c, ctl):
         ctl.station_keep(c)
+        pause = ctl.nav.get("station_keeping", {}).get("pause_arms_beyond_m")
+        if self.world and pause is not None and ctl.station_offset(c) > pause:
+            # the body has given ground: hold the arm path where it is (no progress
+            # this step) until station-keeping has walked it back
+            self.t0 += ctl.dt
         s = min_jerk((c.t - self.t0) / self.seconds)
         x = self.x0 + s * (self.x1 - self.x0)
         ctl.set_arm_state(ctl.wrists_to_pelvis(x, c.pose) if self.world else x)
@@ -222,6 +244,7 @@ class MissionController:
         arm_idx: np.ndarray,
         wrist_space: bool = False,
         home_wrists: np.ndarray | None = None,
+        hand_ranges: dict | None = None,
     ):
         """`wrist_space`: plan arm moves as wrist points for a policy's hand_track
         command (needs `home_wrists`, the default pose's wrist points, left then
@@ -234,6 +257,8 @@ class MissionController:
         self.home_wrists = None if home_wrists is None else np.asarray(home_wrists, float).copy()
         self.wrists = None if home_wrists is None else self.home_wrists.copy()
         self.hands_active = False
+        # the policy's trained hand_track ranges (from its export); targets are clamped to them
+        self.hand_ranges = hand_ranges or {}
         self.hold_pose: np.ndarray | None = None  # (x, y, yaw) to keep station on while the arms work
         self.station_active = False
         self.cfg = cfg
@@ -261,17 +286,20 @@ class MissionController:
         self.current: Primitive | None = None
 
     # -- helpers used by primitives -----------------------------------------
-    def set_velocity(self, vx: float, wz: float, c: Ctx) -> None:
+    def set_velocity(self, vx: float, wz: float, c: Ctx, vy: float = 0.0) -> None:
+        """Rate-limited body velocity. `vy` (sideways) is only ever a small
+        alignment correction, capped at `max_lateral_mps`; travel passes 0."""
         n = self.nav
         vx = float(np.clip(vx, -n["max_reverse_mps"], n["max_forward_mps"]))
+        vy = float(np.clip(vy, -n["max_lateral_mps"], n["max_lateral_mps"]))
         wz = float(np.clip(wz, -n["max_yaw_rate"], n["max_yaw_rate"]))
         dv, dw = n["accel_mps2"] * self.dt, n["yaw_accel"] * self.dt
         self.vel[0] += np.clip(vx - self.vel[0], -dv, dv)
-        self.vel[1] = 0.0  # never side-step
+        self.vel[1] += np.clip(vy - self.vel[1], -dv, dv)
         self.vel[2] += np.clip(wz - self.vel[2], -dw, dw)
 
     def stopped(self) -> bool:
-        return abs(self.vel[0]) < 1e-3 and abs(self.vel[2]) < 1e-3
+        return abs(self.vel[0]) < 1e-3 and abs(self.vel[1]) < 1e-3 and abs(self.vel[2]) < 1e-3
 
     def arm_state(self) -> np.ndarray:
         return self.wrists.copy() if self.wrist_space else self.arm_q.copy()
@@ -288,14 +316,28 @@ class MissionController:
             return None
         if not self.hands_active:
             return np.zeros(8)
-        return np.concatenate([[1.0, 1.0], self.wrists])
+        w = self.wrists.copy()
+        if self.hand_ranges:
+            r = self.hand_ranges
+            for k, y_range in ((0, r.get("pos_y_left") or r["pos_y"]), (3, r.get("pos_y_right") or r["pos_y"])):
+                w[k] = np.clip(w[k], *r["pos_x"])
+                w[k + 1] = np.clip(w[k + 1], *y_range)
+                w[k + 2] = np.clip(w[k + 2], *r["pos_z"])
+        return np.concatenate([[1.0, 1.0], w])
+
+    def station_offset(self, c: Ctx) -> float:
+        """Horizontal distance of the pelvis from the spot it is keeping (0 if none)."""
+        if self.hold_pose is None:
+            return 0.0
+        return float(np.hypot(self.hold_pose[0] - c.pose[0], self.hold_pose[1] - c.pose[1]))
 
     def station_keep(self, c: Ctx) -> None:
         """Stand still at `hold_pose`, stepping back to it if the body drifts.
 
-        A trained policy can give ground while the arms reach forward. Forward/
-        backward error beyond `start_m` (or heading error beyond `yaw_start_rad`)
-        is walked back out -- never sideways -- until it is under `stop_m`.
+        A trained policy can give ground while the arms reach forward. Position
+        error beyond `start_m` (or heading error beyond `yaw_start_rad`) is walked
+        back out -- forward/back and, as a small correction, sideways -- until it
+        is under `stop_m`.
         """
         sk = self.nav.get("station_keeping", {})
         if not sk.get("enabled", False) or self.hold_pose is None:
@@ -305,15 +347,18 @@ class MissionController:
         x, y, _, yaw = c.pose
         gx, gy, gyaw = self.hold_pose
         along = (gx - x) * np.cos(yaw) + (gy - y) * np.sin(yaw)
+        lat = -(gx - x) * np.sin(yaw) + (gy - y) * np.cos(yaw)
         e_yaw = wrap(gyaw - yaw)
         threshold = sk["stop_m"] if self.station_active else sk["start_m"]
         yaw_threshold = sk["yaw_stop_rad"] if self.station_active else sk["yaw_start_rad"]
         move = abs(along) > threshold
+        shift = abs(lat) > threshold
         turn = abs(e_yaw) > yaw_threshold
-        self.station_active = move or turn
+        self.station_active = move or shift or turn
         vx = float(np.clip(self.nav["k_distance"] * along, -sk["max_mps"], sk["max_mps"])) if move else 0.0
+        vy = self.nav["k_lateral"] * lat if shift else 0.0
         wz = self.nav["k_heading"] * e_yaw if turn else 0.0
-        self.set_velocity(vx, wz, c)
+        self.set_velocity(vx, wz, c, vy=vy)
 
     def wrists_to_world(self, w: np.ndarray, pose: np.ndarray) -> np.ndarray:
         """Two wrist points (6), yaw-aligned pelvis frame -> world."""
@@ -395,7 +440,7 @@ class MissionController:
                 ArmMove(
                     self._arm_pose(g, "start", open_gap, dx=back, at_stand=True), T, f"ready arms {name}", anchor="body"
                 ),
-                GoTo(g.start[0], -stand, face, direction="forward", label=f"step in {name}", speed=0.5),
+                GoTo(g.start[0], -stand, face, direction="forward", label=f"step in {name}", speed=0.5, align=True),
                 ArmMove(self._arm_pose(g, "start", open_gap), T, f"reach {name}"),
                 ArmMove(self._arm_pose(g, "start", grip_gap), m["squeeze_time_s"], f"squeeze {name}"),
                 SetHolding(name),
@@ -407,7 +452,9 @@ class MissionController:
                 ),
                 GoTo(g.start[0], -stand - n["back_off_m"], None, direction="reverse", label=f"back off {name}"),
                 GoTo(g.goal[0], -app, face, label=f"carry {name}"),
-                GoTo(g.goal[0], -stand, face, direction="forward", label=f"step in place {name}", speed=0.5),
+                GoTo(
+                    g.goal[0], -stand, face, direction="forward", label=f"step in place {name}", speed=0.5, align=True
+                ),
                 ArmMove(
                     self._arm_pose(g, "goal", grip_gap, dz=m["place_drop_m"]),
                     T,

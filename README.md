@@ -7,7 +7,7 @@ The Roboto Origin (RPO, 23 DoF) runs a holiday display:
 3. It returns for the second gift and repeats the transfer.
 4. It walks home and deactivates.
 
-A tree stands between the two mirrored spots. The robot walks forward, reverses and turns in place, and **never side-steps**: the lateral velocity command is zero at every step.
+A tree stands between the two mirrored spots. The robot travels by walking forward, reversing and turning in place; it never side-steps to get somewhere (no carrying a gift sideways to the other table). Small sideways corrections are allowed only to line up when stepping in to a table and while holding position.
 
 > **Status (2026-11-19): the whole-body policy (`LearningRL-RPO-LocoManipulation-v0`) is training on the TA's GPU; the export is expected by the end of the week and will be tuned over break.** Until then, every
 > rollout so far runs in **ASSISTED** mode:

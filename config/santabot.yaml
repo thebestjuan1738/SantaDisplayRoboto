@@ -86,6 +86,10 @@ navigation:
   max_forward_mps: 0.25    # within Yuki's flat-walk command range (+/-0.35)
   max_reverse_mps: 0.12
   max_yaw_rate: 0.45       # rad/s, within the trained +/-0.5
+  # Sideways motion is ONLY a small alignment correction (stepping in to a table,
+  # holding position). Travel between tables is forward/reverse/turn only.
+  max_lateral_mps: 0.08
+  k_lateral: 1.2
   accel_mps2: 0.25
   yaw_accel: 0.8
   pos_tolerance_m: 0.03
@@ -106,7 +110,10 @@ navigation:
     stop_m: 0.015
     yaw_start_rad: 0.08
     yaw_stop_rad: 0.03
-    max_mps: 0.10
+    max_mps: 0.15
+    # with a trained policy, the arm path pauses while the body is this far off
+    # its spot (it backed off 19-26 cm while reaching), and resumes once back
+    pause_arms_beyond_m: 0.06
   # Command calibration for a trained policy: the controller decides the speed it
   # WANTS, and this table gives the command that produces it. Pairs are
   # [achieved, command], measured open-floor with tools/velocity_sweep.py on
@@ -120,6 +127,8 @@ navigation:
     forward: [[0.0, 0.16], [0.07, 0.17], [0.14, 0.25], [0.27, 0.40], [0.44, 0.60]]
     reverse: [[0.0, 0.17], [0.29, 0.30]]
     yaw:     [[0.0, 0.16], [0.18, 0.25], [0.33, 0.45], [0.58, 0.80]]
+    # sideways: dead zone <= 0.10, measured 2026-11-23 (0.15 -> ~0.10, 0.20 -> ~0.165, 0.30 -> ~0.24)
+    lateral: [[0.0, 0.14], [0.10, 0.15], [0.165, 0.20], [0.24, 0.30]]
 
 manipulation:
   # Wrists are commanded slightly INSIDE the gift faces; the resulting PD error

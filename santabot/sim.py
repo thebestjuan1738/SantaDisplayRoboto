@@ -112,6 +112,7 @@ class SantaTrial:
             self.arm_idx,
             wrist_space=self.arms_by_policy,
             home_wrists=np.concatenate([home["left"][0], home["right"][0]]),
+            hand_ranges=self._hand_ranges(),
         )
         self.hold_scale = self.cfg["manipulation"]["arm_gain_scale_holding"]
 
@@ -144,6 +145,15 @@ class SantaTrial:
         self.data.mocap_pos[self.mocap_id] = (x, y, self.cfg["robot"]["spawn_height_m"])
         self.data.mocap_quat[self.mocap_id] = (np.cos(yaw / 2), 0, 0, np.sin(yaw / 2))
 
+    def _hand_ranges(self) -> dict:
+        """The hand_track sampling ranges the export was trained on (empty if none)."""
+        if not self.arms_by_policy:
+            return {}
+        for c in self.backend.cfg.commands:
+            if c.name == "hand_track":
+                return {k: v for k, v in (c.ranges or {}).items() if v is not None}
+        return {}
+
     def command_for(self, wanted: np.ndarray) -> np.ndarray:
         """The base_velocity command to send for the velocity the controller wants.
 
@@ -167,7 +177,7 @@ class SantaTrial:
 
         vx, vy, wz = wanted
         vx_cmd = lookup(vx, cm["forward"] if vx >= 0 else cm["reverse"])
-        return np.array([vx_cmd, 0.0, lookup(wz, cm["yaw"])])
+        return np.array([vx_cmd, lookup(vy, cm["lateral"]), lookup(wz, cm["yaw"])])
 
     def hand_command(self, arm_q: np.ndarray) -> np.ndarray:
         """hand_track for an IK arm pose (joint-space planning only, e.g. a policy
@@ -246,12 +256,11 @@ class SantaTrial:
                 tau = np.clip(tau, -eff, eff)
                 self.data.ctrl[self.jmap.act] = tau
                 if self.assisted:
-                    vx, _, wz = cmd.velocity
+                    vx, vy, wz = cmd.velocity
                     x, y, yaw = self.assist_pose
                     dt = self.model.opt.timestep
-                    self.assist_pose = np.array(
-                        [x + vx * np.cos(yaw) * dt, y + vx * np.sin(yaw) * dt, yaw + wz * dt]
-                    )
+                    c, s = np.cos(yaw), np.sin(yaw)
+                    self.assist_pose = np.array([x + (vx * c - vy * s) * dt, y + (vx * s + vy * c) * dt, yaw + wz * dt])
                     self._set_mocap()
                 mujoco.mj_step(self.model, self.data)
                 steps += 1

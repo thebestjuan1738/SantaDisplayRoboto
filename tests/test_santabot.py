@@ -50,7 +50,11 @@ def test_full_assisted_trial_never_side_steps(cfg):
     tr = SantaTrial(cfg)
     res = tr.run()
     cmd = np.asarray(tr.log["cmd"])
-    assert np.all(cmd[:, 1] == 0.0), "lateral velocity command must always be zero"
+    phase = np.asarray(tr.log["phase"])
+    # travel between places never side-steps; sideways is only a small alignment correction
+    travel = np.array([p.startswith(("approach", "carry", "back off", "return home")) for p in phase])
+    assert np.all(cmd[travel, 1] == 0.0), "no sideways motion while travelling"
+    assert np.all(np.abs(cmd[:, 1]) <= cfg["navigation"]["max_lateral_mps"] + 1e-9)
     assert (cmd[:, 0] < -0.05).any(), "the robot should reverse away from the tables"
     assert res.completed and not res.fell
     assert res.success, res.first_failure
