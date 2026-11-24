@@ -42,6 +42,8 @@ Mark's `LearningRL-RPO-LocoManipulation-v0` run on the Walk-v1 base (commit `b20
 
 ## Open items
 
+- **Retrain requested from Mark** on `student/cody-rpo-locomanip` @ `deb44df` (rewards only, export format unchanged): taller stance (`190bb9a`: pelvis height 0.73 m, 9 cm swing, light hip-pitch/knee/ankle penalty) and `forearm_level` (`deb44df`: elbow end at wrist height while a hand has a target, ramped 0 -> 1.0). When the export arrives: re-run `tools/velocity_sweep.py` and update `policy_command_map`.
+
 - **`LearningRL-RPO-LocoManipulation-v0` is training** on the TA's GPU (branch `student/cody-rpo-locomanip`); export expected by end of week. Over break: `--assist full`, then unassisted, then `run_eval.py`.
 - **Squeeze strength with a real policy is unknown.** Training rewards wrist position only; tune `squeeze_inset_m` against the measured grip force.
 - **Hardware data needed:**
